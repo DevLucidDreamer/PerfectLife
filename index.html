@@ -213,10 +213,32 @@
   .footer-act{position:fixed;left:0;right:0;bottom:0;max-width:520px;margin:0 auto;
     padding:12px 20px 22px;background:linear-gradient(180deg,transparent,var(--bg) 30%);
     display:flex;gap:10px;}
-  .footer-act button{flex:1;padding:13px;border-radius:12px;font-size:13px;
+  .footer-act button{flex:1;padding:13px 8px;border-radius:12px;font-size:12.5px;
     font-weight:700;cursor:pointer;border:1px solid var(--line);}
   .btn-reset{background:var(--panel);color:var(--ink-dim);}
+  .btn-share{background:var(--panel);color:var(--accent-soft);
+    border-color:var(--accent);}
   .btn-done{background:var(--accent);color:#0d0f0e;border-color:var(--accent);}
+
+  /* 공유 모달 */
+  .modal{position:fixed;inset:0;z-index:100;display:none;
+    background:rgba(6,7,7,.88);backdrop-filter:blur(3px);
+    align-items:center;justify-content:center;padding:20px;}
+  .modal.show{display:flex;}
+  .modal-inner{width:100%;max-width:360px;display:flex;flex-direction:column;
+    align-items:center;gap:14px;}
+  .modal-title{font-size:14px;font-weight:700;color:var(--ink);
+    letter-spacing:.02em;}
+  .canvas-wrap{width:100%;border-radius:14px;overflow:hidden;
+    border:1px solid var(--line);box-shadow:0 12px 40px rgba(0,0,0,.5);}
+  #shareCanvas{width:100%;height:auto;display:block;}
+  .modal-actions{display:flex;gap:10px;width:100%;}
+  .modal-actions button{flex:1;padding:13px;border-radius:12px;
+    font-size:13px;font-weight:700;cursor:pointer;}
+  .mbtn-ghost{background:var(--panel);color:var(--ink-dim);border:1px solid var(--line);}
+  .mbtn-fill{background:var(--accent);color:#0d0f0e;border:none;}
+  .modal-hint{font-size:11.5px;color:var(--ink-faint);text-align:center;
+    font-family:'Gowun Batang',serif;}
 
   .hidden{display:none;}
   .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(20px);
@@ -310,11 +332,27 @@
 </main>
 
 <div class="footer-act" id="footerToday">
-  <button class="btn-reset" onclick="resetToday()">오늘 초기화</button>
+  <button class="btn-reset" onclick="resetToday()">초기화</button>
+  <button class="btn-share" onclick="openShare()">이미지 공유</button>
   <button class="btn-done" onclick="completeAll()">전체 완료</button>
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- 공유 이미지 미리보기 모달 -->
+<div class="modal" id="shareModal">
+  <div class="modal-inner">
+    <div class="modal-title">오늘의 기록 카드</div>
+    <div class="canvas-wrap">
+      <canvas id="shareCanvas" width="1080" height="1920"></canvas>
+    </div>
+    <div class="modal-actions">
+      <button class="mbtn-ghost" onclick="closeShare()">닫기</button>
+      <button class="mbtn-fill" onclick="downloadShare()">이미지 저장</button>
+    </div>
+    <div class="modal-hint">저장한 이미지를 인스타그램 스토리에 올리면 됩니다</div>
+  </div>
+</div>
 
 <script>
 const DAY_NAMES = ['일','월','화','수','목','금','토'];
@@ -845,6 +883,252 @@ function showToast(msg){
   t.textContent=msg;t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>t.classList.remove('show'),1900);
+}
+
+/* =================== 공유 이미지 =================== */
+/* 보고 있는 날짜의 핵심 기록을 축약해서 모음 */
+function collectShareData(){
+  const vd = viewDate();
+  const k = dkey(vd);
+  const day = store.days[k] || {checks:{}};
+  const tasks = buildToday();
+  const doneCount = tasks.filter(t=>day.checks[t.id]).length;
+  const pct = tasks.length? Math.round(doneCount/tasks.length*100):0;
+
+  // 완료한 항목 이름(축약형)
+  const doneLabels = tasks.filter(t=>day.checks[t.id]).map(t=>{
+    if(t.id==='workout') return t.workout.type==='gym'?'헬스':'맨몸운동';
+    return t.pill;
+  });
+
+  // 그날 운동 핵심 수치
+  const highlights = [];
+  // 헬스 볼륨
+  let gymVol = 0;
+  store.gymLogs.filter(l=>l.date===k).forEach(l=>{
+    l.sets.forEach(s=>gymVol+=s.w*s.r);
+  });
+  if(gymVol>0) highlights.push({label:'헬스 볼륨', value:gymVol.toLocaleString()+' kg'});
+  // 맨몸운동
+  store.bodyLogs.filter(l=>l.date===k).forEach(l=>{
+    const m = BODY_LOG[l.ex];
+    if(m) highlights.push({label:m.label, value:l.value.toLocaleString()+' '+m.unit});
+  });
+  // 독서
+  const readPages = store.readLogs.filter(l=>l.date===k)
+    .reduce((s,l)=>s+l.pages,0);
+  if(readPages>0) highlights.push({label:'독서', value:readPages+' p'});
+
+  return {
+    dateStr:`${vd.getFullYear()}. ${String(vd.getMonth()+1).padStart(2,'0')}. ${String(vd.getDate()).padStart(2,'0')}`,
+    dowStr:DAY_NAMES[vd.getDay()]+'요일',
+    doneCount, total:tasks.length, pct,
+    doneLabels, highlights,
+    streak:calcStreak()
+  };
+}
+
+/* 라운드 사각형 path */
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+function drawShareCard(){
+  const d = collectShareData();
+  const cv = document.getElementById('shareCanvas');
+  const ctx = cv.getContext('2d');
+  const W=1080, H=1920;
+
+  // 배경 — 다크 그라데이션
+  let bg = ctx.createLinearGradient(0,0,W,H);
+  bg.addColorStop(0,'#171a19');
+  bg.addColorStop(1,'#0c0e0d');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  // 상단 은은한 오렌지 글로우
+  let glow = ctx.createRadialGradient(W*0.82,H*0.04,0,W*0.82,H*0.04,W*0.95);
+  glow.addColorStop(0,'rgba(216,102,47,0.30)');
+  glow.addColorStop(1,'rgba(216,102,47,0)');
+  ctx.fillStyle=glow; ctx.fillRect(0,0,W,H);
+
+  // 외곽 테두리
+  ctx.strokeStyle='rgba(255,255,255,0.07)';
+  ctx.lineWidth=2;
+  roundRect(ctx,40,40,W-80,H-80,40); ctx.stroke();
+
+  const cx = W/2;
+  ctx.textAlign='center';
+
+  // 태그
+  ctx.fillStyle='#e8915f';
+  ctx.font='600 30px "IBM Plex Sans KR", sans-serif';
+  ctx.fillText('T O D A Y   I   S T A R T', cx, 200);
+
+  // 제목
+  ctx.fillStyle='#e8e6e0';
+  ctx.font='900 92px "Black Han Sans", sans-serif';
+  ctx.fillText('오늘부터 갓생', cx, 310);
+
+  // 날짜
+  ctx.fillStyle='#9aa0a0';
+  ctx.font='400 38px "Gowun Batang", serif';
+  ctx.fillText(`${d.dateStr}  ·  ${d.dowStr}`, cx, 380);
+
+  // 달성률 원형 게이지
+  const ringCx=cx, ringCy=660, ringR=190;
+  ctx.lineWidth=34;
+  // 배경 링
+  ctx.strokeStyle='#2c3134';
+  ctx.beginPath();
+  ctx.arc(ringCx,ringCy,ringR,0,Math.PI*2); ctx.stroke();
+  // 진행 링
+  if(d.pct>0){
+    let rg = ctx.createLinearGradient(ringCx-ringR,ringCy,ringCx+ringR,ringCy);
+    rg.addColorStop(0,'#d8662f'); rg.addColorStop(1,'#e8915f');
+    ctx.strokeStyle=rg;
+    ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.arc(ringCx,ringCy,ringR,-Math.PI/2,-Math.PI/2+Math.PI*2*d.pct/100);
+    ctx.stroke();
+    ctx.lineCap='butt';
+  }
+  // 가운데 퍼센트
+  ctx.fillStyle='#e8e6e0';
+  ctx.font='900 150px "Black Han Sans", sans-serif';
+  ctx.fillText(d.pct+'%', ringCx, ringCy+38);
+  ctx.fillStyle='#646b6b';
+  ctx.font='500 36px "IBM Plex Sans KR", sans-serif';
+  ctx.fillText(`${d.doneCount} / ${d.total} 완료`, ringCx, ringCy+115);
+
+  // 연속 달성일 (게이지 아래 알약)
+  let pillW=380, pillH=92, pillY=940;
+  ctx.fillStyle='rgba(216,102,47,0.14)';
+  roundRect(ctx,cx-pillW/2,pillY,pillW,pillH,46); ctx.fill();
+  ctx.strokeStyle='rgba(216,102,47,0.4)';
+  ctx.lineWidth=2;
+  roundRect(ctx,cx-pillW/2,pillY,pillW,pillH,46); ctx.stroke();
+  ctx.fillStyle='#e8915f';
+  ctx.font='700 44px "IBM Plex Sans KR", sans-serif';
+  ctx.fillText(`🔥  연속 ${d.streak}일`, cx, pillY+60);
+
+  // 핵심 기록 영역
+  let secY=1130;
+  ctx.fillStyle='#646b6b';
+  ctx.font='600 32px "IBM Plex Sans KR", sans-serif';
+  ctx.fillText('— 오늘의 기록 —', cx, secY);
+
+  let afterRecordsY; // 기록 영역이 끝난 y 좌표
+  if(d.highlights.length){
+    const items=d.highlights.slice(0,4);
+    const cardW=440, cardH=150, gap=28;
+    const cols=2;
+    const rows=Math.ceil(items.length/cols);
+    const totalW=cardW*cols+gap;
+    const startX=cx-totalW/2;
+    let gy=secY+60;
+    items.forEach((it,i)=>{
+      const r=Math.floor(i/cols), c=i%cols;
+      const x=startX+c*(cardW+gap);
+      const y=gy+r*(cardH+gap);
+      ctx.fillStyle='#1d2123';
+      roundRect(ctx,x,y,cardW,cardH,24); ctx.fill();
+      ctx.strokeStyle='#2c3134'; ctx.lineWidth=2;
+      roundRect(ctx,x,y,cardW,cardH,24); ctx.stroke();
+      ctx.fillStyle='#d8662f';
+      roundRect(ctx,x,y+28,8,cardH-56,4); ctx.fill();
+      ctx.textAlign='left';
+      ctx.fillStyle='#9aa0a0';
+      ctx.font='500 30px "IBM Plex Sans KR", sans-serif';
+      ctx.fillText(it.label, x+44, y+62);
+      ctx.fillStyle='#e8e6e0';
+      ctx.font='900 56px "Black Han Sans", sans-serif';
+      ctx.fillText(it.value, x+44, y+122);
+      ctx.textAlign='center';
+    });
+    afterRecordsY = gy + rows*cardH + (rows-1)*gap;
+  } else {
+    ctx.fillStyle='#646b6b';
+    ctx.font='400 36px "Gowun Batang", serif';
+    ctx.fillText('기록된 수치가 없습니다', cx, secY+90);
+    afterRecordsY = secY+130;
+  }
+
+  // 완료 항목 태그 줄 — 기록 영역 바로 아래에 배치
+  if(d.doneLabels.length){
+    let ty=afterRecordsY+90;
+    ctx.fillStyle='#646b6b';
+    ctx.font='600 32px "IBM Plex Sans KR", sans-serif';
+    ctx.fillText('— 완료한 루틴 —', cx, ty);
+    ty+=58;
+    ctx.font='600 34px "IBM Plex Sans KR", sans-serif';
+    const padX=30, tagH=66, tagGap=18;
+    const widths=d.doneLabels.map(l=>ctx.measureText(l).width+padX*2);
+    const maxW=W-160;
+    let lines=[[]], lineW=[0];
+    d.doneLabels.forEach((l,i)=>{
+      const w=widths[i];
+      const cur=lines.length-1;
+      if(lineW[cur]+w+(lines[cur].length?tagGap:0)>maxW){
+        lines.push([]); lineW.push(0);
+      }
+      const c=lines.length-1;
+      lines[c].push({label:l,w});
+      lineW[c]+=w+(lines[c].length>1?tagGap:0);
+    });
+    lines.forEach((line,li)=>{
+      let lw=lineW[li];
+      let sx=cx-lw/2;
+      const y=ty+li*(tagH+tagGap);
+      line.forEach(tag=>{
+        ctx.fillStyle='rgba(127,174,106,0.16)';
+        roundRect(ctx,sx,y,tag.w,tagH,33); ctx.fill();
+        ctx.strokeStyle='rgba(127,174,106,0.4)';
+        ctx.lineWidth=2;
+        roundRect(ctx,sx,y,tag.w,tagH,33); ctx.stroke();
+        ctx.fillStyle='#9ed6b5';
+        ctx.fillText(tag.label, sx+tag.w/2, y+44);
+        sx+=tag.w+tagGap;
+      });
+    });
+  }
+
+  // 하단 서명
+  ctx.fillStyle='#4a5050';
+  ctx.font='600 30px "IBM Plex Sans KR", sans-serif';
+  ctx.fillText('오늘부터 갓생  ·  Routine Tracker', cx, H-110);
+}
+
+function openShare(){
+  // 폰트 로딩 후 그리기 (한글 폰트 미적용 방지)
+  document.getElementById('shareModal').classList.add('show');
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(()=>{ drawShareCard(); });
+  } else {
+    setTimeout(drawShareCard,100);
+  }
+}
+function closeShare(){
+  document.getElementById('shareModal').classList.remove('show');
+}
+function downloadShare(){
+  const cv=document.getElementById('shareCanvas');
+  const vd=viewDate();
+  const fname=`갓생_${dkey(vd)}.png`;
+  cv.toBlob(blob=>{
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=fname;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    showToast('이미지를 저장했습니다');
+  },'image/png');
 }
 
 document.querySelectorAll('.tab').forEach(tab=>{
