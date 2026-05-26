@@ -286,9 +286,9 @@
 <main>
   <div id="view-today">
     <div class="daynav">
-      <button id="dayPrev" onclick="shiftViewDay(-1)">‹ 어제</button>
+      <button id="dayPrev" data-action="day-prev">‹ 어제</button>
       <div class="daynav-label" id="dayNavLabel">오늘</div>
-      <button id="dayNext" onclick="shiftViewDay(1)">오늘 ›</button>
+      <button id="dayNext" data-action="day-next">오늘 ›</button>
     </div>
     <div id="todayTasks"></div>
     <div class="note"><p id="todayNote">—</p></div>
@@ -297,14 +297,14 @@
   <div id="view-reading" class="hidden">
     <div class="sect-t"><span class="dot"></span><h2>독서 중인 책</h2>
       <span class="meta" id="readMeta">—</span></div>
-    <button class="openAdd" onclick="toggleAdd('book')">+ 새 책 추가</button>
+    <button class="openAdd" data-action="toggle-add-book">+ 새 책 추가</button>
     <div class="addbox hidden" id="addBook">
       <input id="bkTitle" placeholder="책 제목">
       <div class="twocol">
         <input id="bkTotal" type="number" inputmode="numeric" placeholder="총 페이지">
         <input id="bkStart" type="number" inputmode="numeric" placeholder="현재 페이지(선택)">
       </div>
-      <button class="addBtn" onclick="addBook()">추가하기</button>
+      <button class="addBtn" data-action="add-book">추가하기</button>
     </div>
     <div id="bookList"></div>
   </div>
@@ -312,29 +312,29 @@
   <div id="view-todo" class="hidden">
     <div class="sect-t"><span class="dot"></span><h2>시험공부 TODO</h2>
       <span class="meta" id="todoMeta">—</span></div>
-    <button class="openAdd" onclick="toggleAdd('todo')">+ 할 일 추가</button>
+    <button class="openAdd" data-action="toggle-add-todo">+ 할 일 추가</button>
     <div class="addbox hidden" id="addTodo">
       <input id="tdText" placeholder="할 일 (예: SQLD 2과목 JOIN 인강 듣기)">
       <input id="tdTag" placeholder="분류 (선택 · 예: 토익 / SQLD)">
-      <button class="addBtn" onclick="addTodo()">추가하기</button>
+      <button class="addBtn" data-action="add-todo">추가하기</button>
     </div>
     <div id="todoList"></div>
   </div>
 
   <div id="view-stats" class="hidden">
     <div class="mhead">
-      <button onclick="shiftMonth(-1)">‹</button>
+      <button data-action="month-prev">‹</button>
       <div class="mlabel" id="mLabel">—</div>
-      <button onclick="shiftMonth(1)">›</button>
+      <button data-action="month-next">›</button>
     </div>
     <div id="statsBody"></div>
   </div>
 </main>
 
 <div class="footer-act" id="footerToday">
-  <button class="btn-reset" onclick="resetToday()">초기화</button>
-  <button class="btn-share" onclick="openShare()">이미지 공유</button>
-  <button class="btn-done" onclick="completeAll()">전체 완료</button>
+  <button class="btn-reset" data-action="reset-today">초기화</button>
+  <button class="btn-share" data-action="open-share">이미지 공유</button>
+  <button class="btn-done" data-action="complete-all">전체 완료</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -347,811 +347,1057 @@
       <canvas id="shareCanvas" width="1080" height="1920"></canvas>
     </div>
     <div class="modal-actions">
-      <button class="mbtn-ghost" onclick="closeShare()">닫기</button>
-      <button class="mbtn-fill" onclick="downloadShare()">이미지 저장</button>
+      <button class="mbtn-ghost" data-action="close-share">닫기</button>
+      <button class="mbtn-fill" data-action="download-share">이미지 저장</button>
     </div>
     <div class="modal-hint">저장한 이미지를 인스타그램 스토리에 올리면 됩니다</div>
   </div>
 </div>
 
 <script>
-const DAY_NAMES = ['일','월','화','수','목','금','토'];
-const CHK = '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke="#0d0f0e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+/* ===================================================================
+   오늘부터 갓생 — 루틴 트래커
+   구조: Config → Store → DateUtil → AppState → Stats →
+         Workout → Reading → Todo → Render → Share → UI → init
+   =================================================================== */
 
-const BODY_LOG = {
-  pushup:{label:'푸쉬업', unit:'회'},
-  pullup:{label:'풀업', unit:'회'},
-  chinup:{label:'친업', unit:'회'},
-  plank:{label:'플랭크', unit:'분'},
-};
+/* ===================== Config: 상수 정의 ===================== */
+const Config = {
+  DAY_NAMES: ['일','월','화','수','목','금','토'],
+  CHK: '<svg viewBox="0 0 16 16" fill="none"><path d="M3 8.5L6.5 12L13 4" stroke="#0d0f0e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  SQLD_EXAM: new Date(2026,7,22), // SQLD 시험일 8/22
 
-const WORKOUT = {
-  1:{type:'gym', pill:'헬스', name:'헬스 · 등 · 삼두 · 유산소',
-     ex:['랫풀다운','시티드 로우','케이블 푸시다운']},
-  2:{type:'body', pill:'맨몸 A', name:'맨몸운동 A · 미는 힘', log:['pushup','plank']},
-  3:{type:'gym', pill:'헬스', name:'헬스 · 가슴 · 이두 · 유산소',
-     ex:['체스트 프레스','인클라인 덤벨 프레스','덤벨 컬']},
-  4:{type:'body', pill:'맨몸 B', name:'맨몸운동 B · 당기는 힘', log:['pullup','chinup','plank']},
-  5:{type:'gym', pill:'헬스', name:'헬스 · 하체 · 복근 · 유산소',
-     ex:['레그 프레스','레그 컬','크런치']},
-  6:{type:'body', pill:'맨몸 C', name:'맨몸운동 C · 미는 힘 + 코어', log:['pushup','plank']},
-  0:{type:'body', pill:'맨몸 D', name:'맨몸운동 D · 가벼운 코어 (선택)', log:['pushup','plank']},
-};
+  // 맨몸운동: 기록 가능한 종목
+  BODY_LOG: {
+    pushup:{label:'푸쉬업', unit:'회'},
+    pullup:{label:'풀업', unit:'회'},
+    chinup:{label:'친업', unit:'회'},
+    plank:{label:'플랭크', unit:'분'},
+  },
 
-const DAILY = [
-  {id:'read', pill:'독서', name:'독서 30~35페이지', desc:'독서 탭에서 진도를 기록하십시오'},
-  {id:'dev', pill:'개발', name:'개발 — 최소 25분 또는 커밋 1회', desc:'틈날 때마다'},
-  {id:'toeic', pill:'토익', name:'토익 공부', desc:'평일 LC+단어 / 주말 RC 문법'},
-];
+  // 요일별 운동 (0=일 ~ 6=토)
+  WORKOUT: {
+    1:{type:'gym', pill:'헬스', name:'헬스 · 등 · 삼두 · 유산소',
+       ex:['랫풀다운','시티드 로우','케이블 푸시다운']},
+    2:{type:'body', pill:'맨몸 A', name:'맨몸운동 A · 미는 힘', log:['pushup','plank']},
+    3:{type:'gym', pill:'헬스', name:'헬스 · 가슴 · 이두 · 유산소',
+       ex:['체스트 프레스','인클라인 덤벨 프레스','덤벨 컬']},
+    4:{type:'body', pill:'맨몸 B', name:'맨몸운동 B · 당기는 힘', log:['pullup','chinup','plank']},
+    5:{type:'gym', pill:'헬스', name:'헬스 · 하체 · 복근 · 유산소',
+       ex:['레그 프레스','레그 컬','크런치']},
+    6:{type:'body', pill:'맨몸 C', name:'맨몸운동 C · 미는 힘 + 코어', log:['pushup','plank']},
+    0:{type:'body', pill:'맨몸 D', name:'맨몸운동 D · 가벼운 코어 (선택)', log:['pushup','plank']},
+  },
 
-function dkey(d){d=d||new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-function mkey(d){d=d||new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+  // 매일 고정 루틴
+  DAILY: [
+    {id:'read', pill:'독서', name:'독서 30~35페이지', desc:'독서 탭에서 진도를 기록하십시오'},
+    {id:'dev', pill:'개발', name:'개발 — 최소 25분 또는 커밋 1회', desc:'틈날 때마다'},
+    {id:'toeic', pill:'토익', name:'토익 공부', desc:'평일 LC+단어 / 주말 RC 문법'},
+  ],
 
-let store = JSON.parse(localStorage.getItem('gatsaeng2') || '{}');
-if(!store.days) store.days = {};
-if(!store.bodyLogs) store.bodyLogs = [];
-if(!store.gymLogs) store.gymLogs = [];
-if(!store.books) store.books = [];
-if(!store.readLogs) store.readLogs = [];
-if(!store.todos) store.todos = [];
-function save(){ localStorage.setItem('gatsaeng2', JSON.stringify(store)); }
-function getDay(k){ if(!store.days[k]) store.days[k]={checks:{}}; return store.days[k]; }
-
-/* 오늘 탭에서 보고 있는 날짜. 0=오늘, -1=어제. 어제까지만 허용 */
-let viewOffset = 0;
-function viewDate(){
-  const d = new Date();
-  d.setDate(d.getDate()+viewOffset);
-  return d;
-}
-function shiftViewDay(delta){
-  const next = viewOffset + delta;
-  if(next > 0 || next < -1) return; // 미래 불가, 그제 이전 불가
-  viewOffset = next;
-  renderToday();
-}
-
-function buildToday(){
-  const dow = viewDate().getDay();
-  const wk = WORKOUT[dow];
-  const list = [{id:'workout', pill:wk.pill, type:wk.type, name:wk.name, workout:wk}];
-  DAILY.forEach(d=>list.push({id:d.id, pill:d.pill, type:'daily', name:d.name, desc:d.desc}));
-  if(dow===0) list.push({id:'sqld', pill:'SQLD', type:'study',
-    name:'SQLD 주 1회 학습', desc:'TODO 탭에서 세부 계획을 관리하십시오'});
-  return list;
-}
-
-function renderToday(){
-  const vd = viewDate();
-  const k = dkey(vd);
-  const day = getDay(k);
-  const tasks = buildToday();
-  const wrap = document.getElementById('todayTasks');
-  wrap.innerHTML = '';
-  let done = 0;
-
-  // 날짜 네비게이터 갱신
-  const navLabel = document.getElementById('dayNavLabel');
-  if(viewOffset===0){
-    navLabel.textContent = '오늘';
-    navLabel.classList.remove('past');
-  } else {
-    navLabel.textContent =
-      `${vd.getMonth()+1}월 ${vd.getDate()}일 (${DAY_NAMES[vd.getDay()]}) · 어제`;
-    navLabel.classList.add('past');
-  }
-  document.getElementById('dayPrev').disabled = (viewOffset <= -1);
-  document.getElementById('dayNext').disabled = (viewOffset >= 0);
-
-  tasks.forEach(t=>{
-    const isDone = !!day.checks[t.id];
-    if(isDone) done++;
-    const cls = t.type;
-    const el = document.createElement('div');
-    el.className = 'task'+(isDone?' done':'');
-
-    let logHTML = '';
-    if(t.id==='workout'){
-      logHTML = t.workout.type==='gym'
-        ? buildGymLog(k, t.workout)
-        : buildBodyLog(k, t.workout);
-    }
-    el.innerHTML = `
-      <span class="stripe ${cls}"></span>
-      <div class="row">
-        <div class="box">${CHK}</div>
-        <div class="info">
-          <div class="tt">${t.name}</div>
-          ${t.desc?`<div class="td">${t.desc}</div>`:''}
-        </div>
-        <span class="pill ${cls}">${t.pill}</span>
-      </div>
-      ${logHTML?`<div class="logarea">${logHTML}</div>`:''}
-    `;
-    el.querySelector('.row').addEventListener('click', ()=>{
-      day.checks[t.id] = !day.checks[t.id];
-      save(); renderToday(); renderStreak();
-    });
-    wrap.appendChild(el);
-    if(t.id==='workout') wireWorkoutLog(el, k, t.workout);
-  });
-
-  document.getElementById('doneCount').textContent = done;
-  document.getElementById('totalCount').textContent = '/'+tasks.length;
-  const pct = tasks.length?Math.round(done/tasks.length*100):0;
-  const C=113.1;
-  document.getElementById('ringFill').style.strokeDashoffset = C-C*pct/100;
-  document.getElementById('ringPct').textContent = pct+'%';
-
-  const dow = vd.getDay();
-  const notes={1:'주의 시작 — 헬스로 기분 좋게 출발하십시오.',
+  // 오늘 탭 하단 메모 (요일별)
+  NOTES: {
+    1:'주의 시작 — 헬스로 기분 좋게 출발하십시오.',
     2:'미는 힘의 날. 푸쉬업 폼에 집중하십시오.',
     3:'주 중반 — 가슴·이두. 정자세 우선.',
     4:'당기는 힘의 날. 풀업이 안 되면 네거티브부터.',
     5:'마지막 헬스 — 하체는 가장 큰 근육입니다.',
     6:'주말 맨몸운동. 가볍게라도 빈도를 지키십시오.',
-    0:'휴식의 날. 한 주를 정리하십시오.'};
-  let noteText = viewOffset===0
-    ? notes[dow]+' 완벽보다 빈도 — 최소 기준만 넘기면 오늘은 성공입니다.'
-    : '어제 기록을 확인·수정하고 있습니다. 빠뜨린 항목이 있다면 지금 채워두십시오.';
-  // SQLD 시험 D-day (2026-08-22)
-  const dday = Math.ceil((new Date(2026,7,22) - new Date()) / 86400000);
-  if(viewOffset===0 && dday>0){
-    noteText += ` · SQLD 시험(8/22)까지 D-${dday}`;
-  }
-  document.getElementById('todayNote').textContent = noteText;
-}
+    0:'휴식의 날. 한 주를 정리하십시오.',
+  },
+};
 
-function buildBodyLog(k, wk){
-  const todayLogs = store.bodyLogs.filter(l=>l.date===k);
-  let rows = wk.log.map(exKey=>{
-    const m = BODY_LOG[exKey];
-    const existing = todayLogs.find(l=>l.ex===exKey);
-    const v = existing? existing.value : '';
-    return `<div class="field" data-ex="${exKey}">
-      <label>${m.label}</label>
-      <input type="number" inputmode="numeric" class="bodyInput" value="${v}" placeholder="0">
-      <span class="unit">${m.unit}</span>
-    </div>`;
-  }).join('');
-  return `<div class="logHint">오늘 한 만큼 입력하면 월간 기록에 누적됩니다</div>
-    ${rows}
-    <button class="saveLog" data-save="body">기록 저장</button>
-    <div class="savedBadge">✓ 저장됨</div>`;
-}
+/* ===================== DateUtil: 날짜 유틸 ===================== */
+const DateUtil = {
+  // 'YYYY-MM-DD'
+  dkey(d){
+    d = d || new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  },
+  // 'YYYY-MM'
+  mkey(d){
+    d = d || new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  },
+  // SQLD 시험까지 남은 일수
+  ddayToExam(){
+    return Math.ceil((Config.SQLD_EXAM - new Date()) / 86400000);
+  },
+};
 
-function buildGymLog(k, wk){
-  const todayLogs = store.gymLogs.filter(l=>l.date===k);
-  let blocks = wk.ex.map(exName=>{
-    const existing = todayLogs.find(l=>l.ex===exName);
-    const sets = existing? existing.sets : [{w:'',r:''}];
-    return `<div class="exblock" data-ex="${exName}">
-      <div class="exname">${exName}<span class="vol"></span></div>
-      <div class="setlist">${sets.map((s,i)=>setRowHTML(i,s)).join('')}</div>
-      <button class="miniBtn addSet">+ 세트 추가</button>
-    </div>`;
-  }).join('');
-  return `<div class="logHint">무게 × 횟수를 세트별로 입력하면 총 볼륨이 자동 계산됩니다</div>
-    ${blocks}
-    <button class="saveLog" data-save="gym">기록 저장</button>
-    <div class="savedBadge">✓ 저장됨</div>`;
-}
-function setRowHTML(i,s){
-  return `<div class="setrow">
-    <span class="sidx">${i+1}세트</span>
-    <input type="number" inputmode="decimal" class="wIn" value="${s.w}" placeholder="kg">
-    <span class="x">×</span>
-    <input type="number" inputmode="numeric" class="rIn" value="${s.r}" placeholder="회">
-    <button class="del">×</button>
-  </div>`;
-}
+/* ===================== Store: 데이터 계층 ===================== */
+/* localStorage 영속화. 모든 데이터 읽기·쓰기는 이 객체를 통한다. */
+const Store = {
+  KEY: 'gatsaeng2',
+  data: null,
 
-function wireWorkoutLog(el, k, wk){
-  function recalcVol(){
-    el.querySelectorAll('.exblock').forEach(blk=>{
-      let vol=0;
-      blk.querySelectorAll('.setrow').forEach(r=>{
-        const w=parseFloat(r.querySelector('.wIn').value)||0;
-        const rep=parseFloat(r.querySelector('.rIn').value)||0;
-        vol+=w*rep;
-      });
-      blk.querySelector('.vol').textContent = vol>0?('볼륨 '+vol.toLocaleString()+'kg'):'';
-    });
-  }
-  function attachInputs(){
-    el.querySelectorAll('.wIn,.rIn,.bodyInput').forEach(inp=>{
-      inp.oninput = recalcVol;
-      inp.onclick = e=>e.stopPropagation();
-    });
-  }
-  el.querySelectorAll('.addSet').forEach(btn=>{
-    btn.addEventListener('click', e=>{
-      e.stopPropagation();
-      const list = btn.previousElementSibling;
-      const i = list.children.length;
-      list.insertAdjacentHTML('beforeend', setRowHTML(i,{w:'',r:''}));
-      wireDelButtons(el, recalcVol);
-      attachInputs();
-    });
-  });
-  wireDelButtons(el, recalcVol);
-  attachInputs();
-  recalcVol();
+  load(){
+    this.data = JSON.parse(localStorage.getItem(this.KEY) || '{}');
+    // 스키마 보정 — 누락 필드 기본값
+    const d = this.data;
+    if(!d.days) d.days = {};         // 날짜별 체크 {checks:{}}
+    if(!d.bodyLogs) d.bodyLogs = []; // {date, ex, value}
+    if(!d.gymLogs) d.gymLogs = [];   // {date, ex, sets:[{w,r}]}
+    if(!d.books) d.books = [];       // {id,title,total,current,done,finMonth,finDate}
+    if(!d.readLogs) d.readLogs = []; // {date, bookId, pages}
+    if(!d.todos) d.todos = [];       // {id,text,tag,done,created}
+  },
+  save(){
+    localStorage.setItem(this.KEY, JSON.stringify(this.data));
+  },
+  // 특정 날짜의 체크 객체 (없으면 생성)
+  day(k){
+    if(!this.data.days[k]) this.data.days[k] = {checks:{}};
+    return this.data.days[k];
+  },
+  // 짧은 접근자
+  get days(){ return this.data.days; },
+  get bodyLogs(){ return this.data.bodyLogs; },
+  get gymLogs(){ return this.data.gymLogs; },
+  get books(){ return this.data.books; },
+  get readLogs(){ return this.data.readLogs; },
+  get todos(){ return this.data.todos; },
+  set bodyLogs(v){ this.data.bodyLogs = v; },
+  set gymLogs(v){ this.data.gymLogs = v; },
+  set books(v){ this.data.books = v; },
+  set readLogs(v){ this.data.readLogs = v; },
+  set todos(v){ this.data.todos = v; },
+};
 
-  const saveBtn = el.querySelector('[data-save]');
-  if(saveBtn){
-    saveBtn.addEventListener('click', e=>{
-      e.stopPropagation();
-      if(saveBtn.dataset.save==='body') saveBodyLog(el,k,wk);
-      else saveGymLog(el,k,wk);
-    });
-  }
-}
-function wireDelButtons(el, cb){
-  el.querySelectorAll('.del').forEach(d=>{
-    d.onclick = e=>{
-      e.stopPropagation();
-      const list = d.closest('.setlist');
-      if(list.children.length>1){
-        d.closest('.setrow').remove();
-        [...list.children].forEach((r,i)=>
-          r.querySelector('.sidx').textContent=(i+1)+'세트');
-        cb();
-      }
-    };
-  });
-}
-function saveBodyLog(el,k,wk){
-  store.bodyLogs = store.bodyLogs.filter(l=>l.date!==k || !wk.log.includes(l.ex));
-  el.querySelectorAll('.field[data-ex]').forEach(f=>{
-    const ex=f.dataset.ex;
-    const v=parseFloat(f.querySelector('.bodyInput').value)||0;
-    if(v>0) store.bodyLogs.push({date:k,ex,value:v});
-  });
-  save();
-  el.classList.add('logged');
-  showToast('맨몸운동 기록 저장됨');
-}
-function saveGymLog(el,k,wk){
-  store.gymLogs = store.gymLogs.filter(l=>l.date!==k || !wk.ex.includes(l.ex));
-  el.querySelectorAll('.exblock').forEach(blk=>{
-    const ex=blk.dataset.ex;
-    const sets=[];
-    blk.querySelectorAll('.setrow').forEach(r=>{
-      const w=parseFloat(r.querySelector('.wIn').value)||0;
-      const rep=parseFloat(r.querySelector('.rIn').value)||0;
-      if(w>0&&rep>0) sets.push({w,r:rep});
-    });
-    if(sets.length) store.gymLogs.push({date:k,ex,sets});
-  });
-  save();
-  el.classList.add('logged');
-  showToast('헬스 기록 저장됨');
-}
+/* ===================== AppState: 앱 화면 상태 ===================== */
+/* 어느 날짜를 보고 있는지, 통계 탭이 어느 달을 보고 있는지 등. */
+const AppState = {
+  viewOffset: 0,        // 오늘 탭: 0=오늘, -1=어제 (어제까지만 허용)
+  statMonth: new Date(),// 월간 기록 탭이 보고 있는 달
 
-function renderReading(){
-  const list = document.getElementById('bookList');
-  list.innerHTML='';
-  const reading = store.books.filter(b=>!b.done);
-  const finished = store.books.filter(b=>b.done);
-  document.getElementById('readMeta').textContent =
-    `읽는 중 ${reading.length} · 완독 ${finished.length}`;
-  if(store.books.length===0){
-    list.innerHTML='<div class="emptyStat">아직 등록된 책이 없습니다.<br>+ 새 책 추가로 시작하십시오.</div>';
-    return;
-  }
-  [...reading,...finished].forEach(b=>{
-    const pct = b.total>0?Math.min(100,Math.round(b.current/b.total*100)):0;
-    const div=document.createElement('div');
-    div.className='bookcard'+(b.done?' fin':'');
-    div.innerHTML=`
-      <span class="stripe"></span>
-      <div class="bookhead">
-        <div style="flex:1">
-          <div class="bt">${b.title} ${b.done?'<span class="finTag">완독</span>':''}</div>
-          <div class="bp">${b.current} / ${b.total} 페이지 · ${pct}%</div>
-        </div>
-        <button class="delbook" data-id="${b.id}">×</button>
-      </div>
-      <div class="bar"><i style="width:${pct}%"></i></div>
-      ${b.done?'':`
-        <input type="range" class="prange" min="0" max="${b.total}" value="${b.current}" data-id="${b.id}">
-        <div class="pcontrol">
-          <input type="number" inputmode="numeric" class="pin" value="${b.current}" data-id="${b.id}">
-          <span class="ptot">/ ${b.total}p</span>
-          <button class="setp" data-id="${b.id}">기록</button>
-        </div>`}
-    `;
-    list.appendChild(div);
-  });
-  list.querySelectorAll('.delbook').forEach(b=>
-    b.onclick=()=>{ if(confirm('이 책을 삭제하시겠습니까')){
-      store.books=store.books.filter(x=>x.id!=b.dataset.id);
-      store.readLogs=store.readLogs.filter(x=>x.bookId!=b.dataset.id);
-      save();renderReading();}});
-  list.querySelectorAll('.prange').forEach(r=>{
-    r.oninput=()=>{ list.querySelector(`.pin[data-id="${r.dataset.id}"]`).value=r.value; };
-    r.onchange=()=>updateBookPage(r.dataset.id, parseInt(r.value));
-  });
-  list.querySelectorAll('.setp').forEach(b=>
-    b.onclick=()=>{ const pin=list.querySelector(`.pin[data-id="${b.dataset.id}"]`);
-      updateBookPage(b.dataset.id, parseInt(pin.value)||0); });
-}
-function updateBookPage(id, newPage){
-  const b=store.books.find(x=>x.id==id);
-  if(!b) return;
-  newPage=Math.max(0,Math.min(b.total,newPage));
-  const diff=newPage-b.current;
-  if(diff>0) store.readLogs.push({date:dkey(), bookId:id, pages:diff});
-  b.current=newPage;
-  if(newPage>=b.total && b.total>0){
-    b.done=true; b.finMonth=mkey();
-    showToast(`'${b.title}' 완독을 축하합니다`);
-  } else showToast('독서 진도 기록됨');
-  if(diff>0) getDay(dkey()).checks['read']=true;
-  save();renderReading();
-  if(!document.getElementById('view-today').classList.contains('hidden')){
-    renderToday(); renderStreak();
-  }
-}
-function addBook(){
-  const t=document.getElementById('bkTitle').value.trim();
-  const total=parseInt(document.getElementById('bkTotal').value)||0;
-  const start=parseInt(document.getElementById('bkStart').value)||0;
-  if(!t){ showToast('책 제목을 입력하십시오'); return; }
-  if(total<=0){ showToast('총 페이지 수를 입력하십시오'); return; }
-  store.books.push({id:Date.now(), title:t, total,
-    current:Math.min(start,total), done:false, finMonth:null});
-  save();
-  document.getElementById('bkTitle').value='';
-  document.getElementById('bkTotal').value='';
-  document.getElementById('bkStart').value='';
-  toggleAdd('book');
-  renderReading();
-  showToast('책이 추가되었습니다');
-}
+  viewDate(){
+    const d = new Date();
+    d.setDate(d.getDate() + this.viewOffset);
+    return d;
+  },
+  isToday(){ return this.viewOffset === 0; },
 
-function renderTodo(){
-  const list=document.getElementById('todoList');
-  list.innerHTML='';
-  const open=store.todos.filter(t=>!t.done);
-  const done=store.todos.filter(t=>t.done);
-  document.getElementById('todoMeta').textContent=`남은 일 ${open.length}`;
-  if(store.todos.length===0){
-    list.innerHTML='<div class="emptyStat">등록된 할 일이 없습니다.<br>+ 할 일 추가로 시작하십시오.</div>';
-    return;
-  }
-  [...open,...done].forEach(t=>{
-    const div=document.createElement('div');
-    div.className='todo'+(t.done?' done':'');
-    div.innerHTML=`
-      <div class="box" data-id="${t.id}">${CHK}</div>
-      <div class="ti">
-        <div class="tx">${t.text}</div>
-        ${t.tag?`<div class="tmeta">${t.tag}</div>`:''}
-      </div>
-      <button class="deltodo" data-id="${t.id}">×</button>`;
-    list.appendChild(div);
-  });
-  list.querySelectorAll('.box').forEach(b=>
-    b.onclick=()=>{ const t=store.todos.find(x=>x.id==b.dataset.id);
-      t.done=!t.done; save();renderTodo(); });
-  list.querySelectorAll('.deltodo').forEach(b=>
-    b.onclick=()=>{ store.todos=store.todos.filter(x=>x.id!=b.dataset.id);
-      save();renderTodo(); });
-}
-function addTodo(){
-  const text=document.getElementById('tdText').value.trim();
-  const tag=document.getElementById('tdTag').value.trim();
-  if(!text){ showToast('할 일을 입력하십시오'); return; }
-  store.todos.push({id:Date.now(), text, tag, done:false, created:dkey()});
-  save();
-  document.getElementById('tdText').value='';
-  document.getElementById('tdTag').value='';
-  toggleAdd('todo');
-  renderTodo();
-  showToast('할 일이 추가되었습니다');
-}
+  shiftViewDay(delta){
+    const next = this.viewOffset + delta;
+    if(next > 0 || next < -1) return; // 미래 불가, 그제 이전 불가
+    this.viewOffset = next;
+    Render.today();
+  },
+  resetViewDay(){ this.viewOffset = 0; },
+  shiftMonth(delta){
+    this.statMonth.setMonth(this.statMonth.getMonth() + delta);
+    Render.stats();
+  },
+};
 
-let statMonth = new Date();
-function shiftMonth(d){ statMonth.setMonth(statMonth.getMonth()+d); renderStats(); }
-function renderStats(){
-  const mk=mkey(statMonth);
-  document.getElementById('mLabel').textContent=
-    `${statMonth.getFullYear()}년 ${statMonth.getMonth()+1}월`;
-  const body=document.getElementById('statsBody');
+/* ===================== Schedule: 오늘 할 일 구성 ===================== */
+const Schedule = {
+  // 보고 있는 날짜의 할 일 목록
+  buildTasks(){
+    const dow = AppState.viewDate().getDay();
+    const wk = Config.WORKOUT[dow];
+    const list = [{id:'workout', pill:wk.pill, type:wk.type, name:wk.name, workout:wk}];
+    Config.DAILY.forEach(d =>
+      list.push({id:d.id, pill:d.pill, type:'daily', name:d.name, desc:d.desc}));
+    if(dow === 0) list.push({id:'sqld', pill:'SQLD', type:'study',
+      name:'SQLD 주 1회 학습', desc:'TODO 탭에서 세부 계획을 관리하십시오'});
+    return list;
+  },
+};
 
-  const bAgg={};
-  store.bodyLogs.filter(l=>l.date.startsWith(mk)).forEach(l=>{
-    bAgg[l.ex]=(bAgg[l.ex]||0)+l.value;
-  });
-  const gAgg={};
-  store.gymLogs.filter(l=>l.date.startsWith(mk)).forEach(l=>{
-    let vol=0; l.sets.forEach(s=>vol+=s.w*s.r);
-    gAgg[l.ex]=(gAgg[l.ex]||0)+vol;
-  });
-  const workoutDays=new Set([
-    ...store.bodyLogs.filter(l=>l.date.startsWith(mk)).map(l=>l.date),
-    ...store.gymLogs.filter(l=>l.date.startsWith(mk)).map(l=>l.date)
-  ]).size;
-  const monthPages=store.readLogs.filter(l=>l.date.startsWith(mk))
-    .reduce((s,l)=>s+l.pages,0);
-  const finishedBooks=store.books.filter(b=>b.done&&b.finMonth===mk);
-  const totalVol=Object.values(gAgg).reduce((a,b)=>a+b,0);
-
-  let html='';
-  html+=`<div class="sect-t"><span class="dot"></span><h2>운동 요약</h2></div>`;
-  html+=`<div class="statgrid">
-    <div class="scard"><span class="stripe" style="background:var(--body)"></span>
-      <div class="sk">운동한 날</div>
-      <div class="sv">${workoutDays}<span class="su"> 일</span></div></div>
-    <div class="scard"><span class="stripe" style="background:var(--gym)"></span>
-      <div class="sk">헬스 총 볼륨</div>
-      <div class="sv">${totalVol.toLocaleString()}<span class="su"> kg</span></div></div>
-  </div>`;
-
-  html+=`<div class="sect-t"><span class="dot"></span><h2>맨몸운동 누적</h2></div>`;
-  if(Object.keys(bAgg).length){
-    html+=`<div class="statgrid">`;
-    for(const ex in BODY_LOG){
-      if(bAgg[ex]){
-        const m=BODY_LOG[ex];
-        html+=`<div class="scard"><span class="stripe" style="background:var(--body)"></span>
-          <div class="sk">${m.label}</div>
-          <div class="sv">${bAgg[ex].toLocaleString()}<span class="su"> ${m.unit}</span></div></div>`;
-      }
+/* ===================== Stats: 집계·연속 달성 계산 ===================== */
+const Stats = {
+  // 하루 완료 여부 (연속 달성 판정용)
+  isDayComplete(k){
+    const d = Store.days[k];
+    if(!d) return false;
+    const need = ['workout','read','dev','toeic'];
+    if(new Date(k).getDay() === 0) need.push('sqld');
+    return need.filter(id => d.checks[id]).length >= need.length;
+  },
+  // 연속 달성일
+  streak(){
+    let s = 0, d = new Date();
+    for(let i=0; i<400; i++){
+      const k = DateUtil.dkey(d);
+      if(this.isDayComplete(k)) s++;
+      else if(i !== 0) break;
+      d.setDate(d.getDate()-1);
     }
-    html+=`</div>`;
-  } else html+=`<div class="emptyStat">이번 달 맨몸운동 기록이 없습니다.</div>`;
+    return s;
+  },
+  // 특정 날짜의 헬스 총 볼륨
+  gymVolumeOf(k){
+    let vol = 0;
+    Store.gymLogs.filter(l => l.date===k).forEach(l =>
+      l.sets.forEach(s => vol += s.w*s.r));
+    return vol;
+  },
+  // 월간 집계 (월간 기록 탭에서 사용)
+  monthly(mk){
+    const bAgg = {}; // 맨몸운동 종목별 합
+    Store.bodyLogs.filter(l => l.date.startsWith(mk)).forEach(l =>
+      bAgg[l.ex] = (bAgg[l.ex]||0) + l.value);
 
-  html+=`<div class="sect-t"><span class="dot"></span><h2>헬스 종목별 볼륨</h2></div>`;
-  if(Object.keys(gAgg).length){
-    html+=`<div class="scard wide"><span class="stripe" style="background:var(--gym)"></span>
-      <div class="volist">`;
-    Object.entries(gAgg).sort((a,b)=>b[1]-a[1]).forEach(([ex,vol])=>{
-      html+=`<div class="volrow"><span class="vn">${ex}</span>
-        <span class="vv">${vol.toLocaleString()} kg</span></div>`;
+    const gAgg = {}; // 헬스 종목별 볼륨
+    Store.gymLogs.filter(l => l.date.startsWith(mk)).forEach(l => {
+      let vol = 0; l.sets.forEach(s => vol += s.w*s.r);
+      gAgg[l.ex] = (gAgg[l.ex]||0) + vol;
     });
-    html+=`</div></div>`;
-  } else html+=`<div class="emptyStat">이번 달 헬스 기록이 없습니다.</div>`;
 
-  html+=`<div class="sect-t"><span class="dot"></span><h2>독서 요약</h2></div>`;
-  html+=`<div class="statgrid">
-    <div class="scard"><span class="stripe" style="background:var(--accent)"></span>
-      <div class="sk">읽은 페이지</div>
-      <div class="sv">${monthPages.toLocaleString()}<span class="su"> p</span></div></div>
-    <div class="scard"><span class="stripe" style="background:var(--done)"></span>
-      <div class="sk">완독한 책</div>
-      <div class="sv">${finishedBooks.length}<span class="su"> 권</span></div></div>
-  </div>`;
-  if(finishedBooks.length){
-    html+=`<div class="scard wide" style="margin-top:9px"><span class="stripe" style="background:var(--done)"></span>
-      <div class="volist">`;
-    finishedBooks.forEach(b=>{
-      html+=`<div class="volrow"><span class="vn">${b.title}</span>
-        <span class="vv">${b.total}p</span></div>`;
-    });
-    html+=`</div></div>`;
-  }
-  body.innerHTML=html;
-}
+    const workoutDays = new Set([
+      ...Store.bodyLogs.filter(l => l.date.startsWith(mk)).map(l => l.date),
+      ...Store.gymLogs.filter(l => l.date.startsWith(mk)).map(l => l.date),
+    ]).size;
 
-function isDayComplete(k){
-  const d=store.days[k]; if(!d) return false;
-  const dt=new Date(k);
-  const need=['workout','read','dev','toeic'];
-  if(dt.getDay()===0) need.push('sqld');
-  return need.filter(id=>d.checks[id]).length>=need.length;
-}
-function calcStreak(){
-  let s=0,d=new Date();
-  for(let i=0;i<400;i++){
-    const k=dkey(d);
-    if(isDayComplete(k)) s++;
-    else if(i!==0) break;
-    d.setDate(d.getDate()-1);
-  }
-  return s;
-}
-function renderStreak(){
-  const s=calcStreak();
-  document.getElementById('streakVal').textContent=s;
-  document.getElementById('flameIco').style.filter=s>0?'none':'grayscale(1) opacity(.4)';
-}
+    const monthPages = Store.readLogs
+      .filter(l => l.date.startsWith(mk))
+      .reduce((s,l) => s + l.pages, 0);
+    const finishedBooks = Store.books.filter(b => b.done && b.finMonth === mk);
+    const totalVol = Object.values(gAgg).reduce((a,b) => a+b, 0);
 
-function completeAll(){
-  const day=getDay(dkey(viewDate()));
-  buildToday().forEach(t=>day.checks[t.id]=true);
-  save();renderToday();renderStreak();
-  showToast(viewOffset===0?'오늘 전체 완료 — 수고하셨습니다':'어제 항목을 모두 완료 처리했습니다');
-}
-function resetToday(){
-  const word = viewOffset===0?'오늘':'어제';
-  if(!confirm(word+' 체크 기록을 초기화하시겠습니까 (운동·독서 수치 기록은 유지됩니다)')) return;
-  getDay(dkey(viewDate())).checks={};
-  save();renderToday();renderStreak();
-  showToast(word+' 체크를 초기화했습니다');
-}
-function toggleAdd(which){
-  document.getElementById(which==='book'?'addBook':'addTodo').classList.toggle('hidden');
-}
-let toastTimer;
-function showToast(msg){
-  const t=document.getElementById('toast');
-  t.textContent=msg;t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>t.classList.remove('show'),1900);
-}
+    return {bAgg, gAgg, workoutDays, monthPages, finishedBooks, totalVol};
+  },
+};
 
-/* =================== 공유 이미지 =================== */
-/* 보고 있는 날짜의 핵심 기록을 축약해서 모음 */
-function collectShareData(){
-  const vd = viewDate();
-  const k = dkey(vd);
-  const day = store.days[k] || {checks:{}};
-  const tasks = buildToday();
-  const doneCount = tasks.filter(t=>day.checks[t.id]).length;
-  const pct = tasks.length? Math.round(doneCount/tasks.length*100):0;
+/* ===================== Workout: 운동 기록 로직 ===================== */
+const Workout = {
+  // 맨몸운동 입력 영역 HTML
+  buildBodyLogHTML(k, wk){
+    const todayLogs = Store.bodyLogs.filter(l => l.date===k);
+    const rows = wk.log.map(exKey => {
+      const m = Config.BODY_LOG[exKey];
+      const existing = todayLogs.find(l => l.ex===exKey);
+      const v = existing ? existing.value : '';
+      return `<div class="field" data-ex="${exKey}">
+        <label>${m.label}</label>
+        <input type="number" inputmode="numeric" class="bodyInput" value="${v}" placeholder="0">
+        <span class="unit">${m.unit}</span>
+      </div>`;
+    }).join('');
+    return `<div class="logHint">오늘 한 만큼 입력하면 월간 기록에 누적됩니다</div>
+      ${rows}
+      <button class="saveLog" data-save="body">기록 저장</button>
+      <div class="savedBadge">✓ 저장됨</div>`;
+  },
 
-  // 완료한 항목 이름(축약형)
-  const doneLabels = tasks.filter(t=>day.checks[t.id]).map(t=>{
-    if(t.id==='workout') return t.workout.type==='gym'?'헬스':'맨몸운동';
-    return t.pill;
-  });
+  // 헬스 입력 영역 HTML
+  buildGymLogHTML(k, wk){
+    const todayLogs = Store.gymLogs.filter(l => l.date===k);
+    const blocks = wk.ex.map(exName => {
+      const existing = todayLogs.find(l => l.ex===exName);
+      const sets = existing ? existing.sets : [{w:'',r:''}];
+      return `<div class="exblock" data-ex="${exName}">
+        <div class="exname">${exName}<span class="vol"></span></div>
+        <div class="setlist">${sets.map((s,i) => this.setRowHTML(i,s)).join('')}</div>
+        <button class="miniBtn addSet">+ 세트 추가</button>
+      </div>`;
+    }).join('');
+    return `<div class="logHint">무게 × 횟수를 세트별로 입력하면 총 볼륨이 자동 계산됩니다</div>
+      ${blocks}
+      <button class="saveLog" data-save="gym">기록 저장</button>
+      <div class="savedBadge">✓ 저장됨</div>`;
+  },
 
-  // 그날 운동 핵심 수치
-  const highlights = [];
-  // 헬스 볼륨
-  let gymVol = 0;
-  store.gymLogs.filter(l=>l.date===k).forEach(l=>{
-    l.sets.forEach(s=>gymVol+=s.w*s.r);
-  });
-  if(gymVol>0) highlights.push({label:'헬스 볼륨', value:gymVol.toLocaleString()+' kg'});
-  // 맨몸운동
-  store.bodyLogs.filter(l=>l.date===k).forEach(l=>{
-    const m = BODY_LOG[l.ex];
-    if(m) highlights.push({label:m.label, value:l.value.toLocaleString()+' '+m.unit});
-  });
-  // 독서
-  const readPages = store.readLogs.filter(l=>l.date===k)
-    .reduce((s,l)=>s+l.pages,0);
-  if(readPages>0) highlights.push({label:'독서', value:readPages+' p'});
+  setRowHTML(i, s){
+    return `<div class="setrow">
+      <span class="sidx">${i+1}세트</span>
+      <input type="number" inputmode="decimal" class="wIn" value="${s.w}" placeholder="kg">
+      <span class="x">×</span>
+      <input type="number" inputmode="numeric" class="rIn" value="${s.r}" placeholder="회">
+      <button class="del">×</button>
+    </div>`;
+  },
 
-  return {
-    dateStr:`${vd.getFullYear()}. ${String(vd.getMonth()+1).padStart(2,'0')}. ${String(vd.getDate()).padStart(2,'0')}`,
-    dowStr:DAY_NAMES[vd.getDay()]+'요일',
-    doneCount, total:tasks.length, pct,
-    doneLabels, highlights,
-    streak:calcStreak()
-  };
-}
+  // 운동 카드에 이벤트 연결 (볼륨 계산, 세트 추가/삭제, 저장)
+  wire(el, k, wk){
+    const recalcVol = () => {
+      el.querySelectorAll('.exblock').forEach(blk => {
+        let vol = 0;
+        blk.querySelectorAll('.setrow').forEach(r => {
+          const w = parseFloat(r.querySelector('.wIn').value) || 0;
+          const rep = parseFloat(r.querySelector('.rIn').value) || 0;
+          vol += w*rep;
+        });
+        blk.querySelector('.vol').textContent =
+          vol>0 ? ('볼륨 ' + vol.toLocaleString() + 'kg') : '';
+      });
+    };
+    const attachInputs = () => {
+      el.querySelectorAll('.wIn,.rIn,.bodyInput').forEach(inp => {
+        inp.oninput = recalcVol;
+        inp.onclick = e => e.stopPropagation();
+      });
+    };
 
-/* 라운드 사각형 path */
-function roundRect(ctx,x,y,w,h,r){
-  ctx.beginPath();
-  ctx.moveTo(x+r,y);
-  ctx.arcTo(x+w,y,x+w,y+h,r);
-  ctx.arcTo(x+w,y+h,x,y+h,r);
-  ctx.arcTo(x,y+h,x,y,r);
-  ctx.arcTo(x,y,x+w,y,r);
-  ctx.closePath();
-}
-
-function drawShareCard(){
-  const d = collectShareData();
-  const cv = document.getElementById('shareCanvas');
-  const ctx = cv.getContext('2d');
-  const W=1080, H=1920;
-
-  // 배경 — 다크 그라데이션
-  let bg = ctx.createLinearGradient(0,0,W,H);
-  bg.addColorStop(0,'#171a19');
-  bg.addColorStop(1,'#0c0e0d');
-  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
-
-  // 상단 은은한 오렌지 글로우
-  let glow = ctx.createRadialGradient(W*0.82,H*0.04,0,W*0.82,H*0.04,W*0.95);
-  glow.addColorStop(0,'rgba(216,102,47,0.30)');
-  glow.addColorStop(1,'rgba(216,102,47,0)');
-  ctx.fillStyle=glow; ctx.fillRect(0,0,W,H);
-
-  // 외곽 테두리
-  ctx.strokeStyle='rgba(255,255,255,0.07)';
-  ctx.lineWidth=2;
-  roundRect(ctx,40,40,W-80,H-80,40); ctx.stroke();
-
-  const cx = W/2;
-  ctx.textAlign='center';
-
-  // 태그
-  ctx.fillStyle='#e8915f';
-  ctx.font='600 30px "IBM Plex Sans KR", sans-serif';
-  ctx.fillText('T O D A Y   I   S T A R T', cx, 200);
-
-  // 제목
-  ctx.fillStyle='#e8e6e0';
-  ctx.font='900 92px "Black Han Sans", sans-serif';
-  ctx.fillText('오늘부터 갓생', cx, 310);
-
-  // 날짜
-  ctx.fillStyle='#9aa0a0';
-  ctx.font='400 38px "Gowun Batang", serif';
-  ctx.fillText(`${d.dateStr}  ·  ${d.dowStr}`, cx, 380);
-
-  // 달성률 원형 게이지
-  const ringCx=cx, ringCy=660, ringR=190;
-  ctx.lineWidth=34;
-  // 배경 링
-  ctx.strokeStyle='#2c3134';
-  ctx.beginPath();
-  ctx.arc(ringCx,ringCy,ringR,0,Math.PI*2); ctx.stroke();
-  // 진행 링
-  if(d.pct>0){
-    let rg = ctx.createLinearGradient(ringCx-ringR,ringCy,ringCx+ringR,ringCy);
-    rg.addColorStop(0,'#d8662f'); rg.addColorStop(1,'#e8915f');
-    ctx.strokeStyle=rg;
-    ctx.lineCap='round';
-    ctx.beginPath();
-    ctx.arc(ringCx,ringCy,ringR,-Math.PI/2,-Math.PI/2+Math.PI*2*d.pct/100);
-    ctx.stroke();
-    ctx.lineCap='butt';
-  }
-  // 가운데 퍼센트
-  ctx.fillStyle='#e8e6e0';
-  ctx.font='900 150px "Black Han Sans", sans-serif';
-  ctx.fillText(d.pct+'%', ringCx, ringCy+38);
-  ctx.fillStyle='#646b6b';
-  ctx.font='500 36px "IBM Plex Sans KR", sans-serif';
-  ctx.fillText(`${d.doneCount} / ${d.total} 완료`, ringCx, ringCy+115);
-
-  // 연속 달성일 (게이지 아래 알약)
-  let pillW=380, pillH=92, pillY=940;
-  ctx.fillStyle='rgba(216,102,47,0.14)';
-  roundRect(ctx,cx-pillW/2,pillY,pillW,pillH,46); ctx.fill();
-  ctx.strokeStyle='rgba(216,102,47,0.4)';
-  ctx.lineWidth=2;
-  roundRect(ctx,cx-pillW/2,pillY,pillW,pillH,46); ctx.stroke();
-  ctx.fillStyle='#e8915f';
-  ctx.font='700 44px "IBM Plex Sans KR", sans-serif';
-  ctx.fillText(`🔥  연속 ${d.streak}일`, cx, pillY+60);
-
-  // 핵심 기록 영역
-  let secY=1130;
-  ctx.fillStyle='#646b6b';
-  ctx.font='600 32px "IBM Plex Sans KR", sans-serif';
-  ctx.fillText('— 오늘의 기록 —', cx, secY);
-
-  let afterRecordsY; // 기록 영역이 끝난 y 좌표
-  if(d.highlights.length){
-    const items=d.highlights.slice(0,4);
-    const cardW=440, cardH=150, gap=28;
-    const cols=2;
-    const rows=Math.ceil(items.length/cols);
-    const totalW=cardW*cols+gap;
-    const startX=cx-totalW/2;
-    let gy=secY+60;
-    items.forEach((it,i)=>{
-      const r=Math.floor(i/cols), c=i%cols;
-      const x=startX+c*(cardW+gap);
-      const y=gy+r*(cardH+gap);
-      ctx.fillStyle='#1d2123';
-      roundRect(ctx,x,y,cardW,cardH,24); ctx.fill();
-      ctx.strokeStyle='#2c3134'; ctx.lineWidth=2;
-      roundRect(ctx,x,y,cardW,cardH,24); ctx.stroke();
-      ctx.fillStyle='#d8662f';
-      roundRect(ctx,x,y+28,8,cardH-56,4); ctx.fill();
-      ctx.textAlign='left';
-      ctx.fillStyle='#9aa0a0';
-      ctx.font='500 30px "IBM Plex Sans KR", sans-serif';
-      ctx.fillText(it.label, x+44, y+62);
-      ctx.fillStyle='#e8e6e0';
-      ctx.font='900 56px "Black Han Sans", sans-serif';
-      ctx.fillText(it.value, x+44, y+122);
-      ctx.textAlign='center';
-    });
-    afterRecordsY = gy + rows*cardH + (rows-1)*gap;
-  } else {
-    ctx.fillStyle='#646b6b';
-    ctx.font='400 36px "Gowun Batang", serif';
-    ctx.fillText('기록된 수치가 없습니다', cx, secY+90);
-    afterRecordsY = secY+130;
-  }
-
-  // 완료 항목 태그 줄 — 기록 영역 바로 아래에 배치
-  if(d.doneLabels.length){
-    let ty=afterRecordsY+90;
-    ctx.fillStyle='#646b6b';
-    ctx.font='600 32px "IBM Plex Sans KR", sans-serif';
-    ctx.fillText('— 완료한 루틴 —', cx, ty);
-    ty+=58;
-    ctx.font='600 34px "IBM Plex Sans KR", sans-serif';
-    const padX=30, tagH=66, tagGap=18;
-    const widths=d.doneLabels.map(l=>ctx.measureText(l).width+padX*2);
-    const maxW=W-160;
-    let lines=[[]], lineW=[0];
-    d.doneLabels.forEach((l,i)=>{
-      const w=widths[i];
-      const cur=lines.length-1;
-      if(lineW[cur]+w+(lines[cur].length?tagGap:0)>maxW){
-        lines.push([]); lineW.push(0);
-      }
-      const c=lines.length-1;
-      lines[c].push({label:l,w});
-      lineW[c]+=w+(lines[c].length>1?tagGap:0);
-    });
-    lines.forEach((line,li)=>{
-      let lw=lineW[li];
-      let sx=cx-lw/2;
-      const y=ty+li*(tagH+tagGap);
-      line.forEach(tag=>{
-        ctx.fillStyle='rgba(127,174,106,0.16)';
-        roundRect(ctx,sx,y,tag.w,tagH,33); ctx.fill();
-        ctx.strokeStyle='rgba(127,174,106,0.4)';
-        ctx.lineWidth=2;
-        roundRect(ctx,sx,y,tag.w,tagH,33); ctx.stroke();
-        ctx.fillStyle='#9ed6b5';
-        ctx.fillText(tag.label, sx+tag.w/2, y+44);
-        sx+=tag.w+tagGap;
+    el.querySelectorAll('.addSet').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const list = btn.previousElementSibling;
+        const i = list.children.length;
+        list.insertAdjacentHTML('beforeend', this.setRowHTML(i, {w:'',r:''}));
+        this._wireDelButtons(el, recalcVol);
+        attachInputs();
       });
     });
-  }
+    this._wireDelButtons(el, recalcVol);
+    attachInputs();
+    recalcVol();
 
-  // 하단 서명
-  ctx.fillStyle='#4a5050';
-  ctx.font='600 30px "IBM Plex Sans KR", sans-serif';
-  ctx.fillText('오늘부터 갓생  ·  Routine Tracker', cx, H-110);
-}
+    const saveBtn = el.querySelector('[data-save]');
+    if(saveBtn){
+      saveBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        if(saveBtn.dataset.save === 'body') this.saveBody(el, k, wk);
+        else this.saveGym(el, k, wk);
+      });
+    }
+  },
 
-function openShare(){
-  // 폰트 로딩 후 그리기 (한글 폰트 미적용 방지)
-  document.getElementById('shareModal').classList.add('show');
-  if(document.fonts && document.fonts.ready){
-    document.fonts.ready.then(()=>{ drawShareCard(); });
-  } else {
-    setTimeout(drawShareCard,100);
-  }
-}
-function closeShare(){
-  document.getElementById('shareModal').classList.remove('show');
-}
-function downloadShare(){
-  const cv=document.getElementById('shareCanvas');
-  const vd=viewDate();
-  const fname=`갓생_${dkey(vd)}.png`;
-  cv.toBlob(blob=>{
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download=fname;
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-    showToast('이미지를 저장했습니다');
-  },'image/png');
-}
+  _wireDelButtons(el, cb){
+    el.querySelectorAll('.del').forEach(d => {
+      d.onclick = e => {
+        e.stopPropagation();
+        const list = d.closest('.setlist');
+        if(list.children.length > 1){
+          d.closest('.setrow').remove();
+          [...list.children].forEach((r,i) =>
+            r.querySelector('.sidx').textContent = (i+1)+'세트');
+          cb();
+        }
+      };
+    });
+  },
 
-document.querySelectorAll('.tab').forEach(tab=>{
-  tab.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-    tab.classList.add('active');
-    const v=tab.dataset.tab;
-    ['today','reading','todo','stats'].forEach(name=>
-      document.getElementById('view-'+name).classList.toggle('hidden',name!==v));
-    document.getElementById('footerToday').style.display=v==='today'?'flex':'none';
-    if(v==='today'){ viewOffset=0; renderToday(); }
-    if(v==='reading') renderReading();
-    if(v==='todo') renderTodo();
-    if(v==='stats') renderStats();
-  });
-});
+  saveBody(el, k, wk){
+    Store.bodyLogs = Store.bodyLogs.filter(l => l.date!==k || !wk.log.includes(l.ex));
+    el.querySelectorAll('.field[data-ex]').forEach(f => {
+      const ex = f.dataset.ex;
+      const v = parseFloat(f.querySelector('.bodyInput').value) || 0;
+      if(v > 0) Store.bodyLogs.push({date:k, ex, value:v});
+    });
+    Store.save();
+    el.classList.add('logged');
+    UI.toast('맨몸운동 기록 저장됨');
+  },
 
+  saveGym(el, k, wk){
+    Store.gymLogs = Store.gymLogs.filter(l => l.date!==k || !wk.ex.includes(l.ex));
+    el.querySelectorAll('.exblock').forEach(blk => {
+      const ex = blk.dataset.ex;
+      const sets = [];
+      blk.querySelectorAll('.setrow').forEach(r => {
+        const w = parseFloat(r.querySelector('.wIn').value) || 0;
+        const rep = parseFloat(r.querySelector('.rIn').value) || 0;
+        if(w>0 && rep>0) sets.push({w, r:rep});
+      });
+      if(sets.length) Store.gymLogs.push({date:k, ex, sets});
+    });
+    Store.save();
+    el.classList.add('logged');
+    UI.toast('헬스 기록 저장됨');
+  },
+};
+
+/* ===================== Reading: 독서 로직 ===================== */
+const Reading = {
+  // 책 진도 갱신 — 늘어난 만큼 readLogs에 기록, 완독 처리
+  updatePage(id, newPage){
+    const b = Store.books.find(x => x.id == id);
+    if(!b) return;
+    newPage = Math.max(0, Math.min(b.total, newPage));
+    const diff = newPage - b.current;
+    if(diff > 0) Store.readLogs.push({date:DateUtil.dkey(), bookId:id, pages:diff});
+    b.current = newPage;
+    if(newPage >= b.total && b.total > 0){
+      b.done = true;
+      b.finMonth = DateUtil.mkey();
+      b.finDate = DateUtil.dkey();
+      UI.toast(`'${b.title}' 완독을 축하합니다`);
+    } else {
+      UI.toast('독서 진도 기록됨');
+    }
+    // 진도를 올렸으면 오늘 독서 항목 자동 체크
+    if(diff > 0) Store.day(DateUtil.dkey()).checks['read'] = true;
+    Store.save();
+    Render.reading();
+    if(!document.getElementById('view-today').classList.contains('hidden')){
+      Render.today();
+      Render.streak();
+    }
+  },
+
+  addBook(){
+    const t = document.getElementById('bkTitle').value.trim();
+    const total = parseInt(document.getElementById('bkTotal').value) || 0;
+    const start = parseInt(document.getElementById('bkStart').value) || 0;
+    if(!t){ UI.toast('책 제목을 입력하십시오'); return; }
+    if(total <= 0){ UI.toast('총 페이지 수를 입력하십시오'); return; }
+    Store.books.push({id:Date.now(), title:t, total,
+      current:Math.min(start,total), done:false, finMonth:null, finDate:null});
+    Store.save();
+    document.getElementById('bkTitle').value = '';
+    document.getElementById('bkTotal').value = '';
+    document.getElementById('bkStart').value = '';
+    UI.toggleAdd('book');
+    Render.reading();
+    UI.toast('책이 추가되었습니다');
+  },
+
+  deleteBook(id){
+    if(!confirm('이 책을 삭제하시겠습니까')) return;
+    Store.books = Store.books.filter(x => x.id != id);
+    Store.readLogs = Store.readLogs.filter(x => x.bookId != id);
+    Store.save();
+    Render.reading();
+  },
+};
+
+/* ===================== Todo: 시험 TODO 로직 ===================== */
+const Todo = {
+  add(){
+    const text = document.getElementById('tdText').value.trim();
+    const tag = document.getElementById('tdTag').value.trim();
+    if(!text){ UI.toast('할 일을 입력하십시오'); return; }
+    Store.todos.push({id:Date.now(), text, tag, done:false, created:DateUtil.dkey()});
+    Store.save();
+    document.getElementById('tdText').value = '';
+    document.getElementById('tdTag').value = '';
+    UI.toggleAdd('todo');
+    Render.todo();
+    UI.toast('할 일이 추가되었습니다');
+  },
+  toggle(id){
+    const t = Store.todos.find(x => x.id == id);
+    if(t){ t.done = !t.done; Store.save(); Render.todo(); }
+  },
+  remove(id){
+    Store.todos = Store.todos.filter(x => x.id != id);
+    Store.save();
+    Render.todo();
+  },
+};
+
+/* ===================== Routine: 오늘 항목 액션 ===================== */
+const Routine = {
+  toggleCheck(taskId){
+    const day = Store.day(DateUtil.dkey(AppState.viewDate()));
+    day.checks[taskId] = !day.checks[taskId];
+    Store.save();
+    Render.today();
+    Render.streak();
+  },
+  completeAll(){
+    const day = Store.day(DateUtil.dkey(AppState.viewDate()));
+    Schedule.buildTasks().forEach(t => day.checks[t.id] = true);
+    Store.save();
+    Render.today();
+    Render.streak();
+    UI.toast(AppState.isToday()
+      ? '오늘 전체 완료 — 수고하셨습니다'
+      : '어제 항목을 모두 완료 처리했습니다');
+  },
+  reset(){
+    const word = AppState.isToday() ? '오늘' : '어제';
+    if(!confirm(word + ' 체크 기록을 초기화하시겠습니까 (운동·독서 수치 기록은 유지됩니다)')) return;
+    Store.day(DateUtil.dkey(AppState.viewDate())).checks = {};
+    Store.save();
+    Render.today();
+    Render.streak();
+    UI.toast(word + ' 체크를 초기화했습니다');
+  },
+};
+
+/* ===================== Render: 화면 렌더링 ===================== */
+const Render = {
+  // ----- 오늘 탭 -----
+  today(){
+    const vd = AppState.viewDate();
+    const k = DateUtil.dkey(vd);
+    const day = Store.day(k);
+    const tasks = Schedule.buildTasks();
+    const wrap = document.getElementById('todayTasks');
+    wrap.innerHTML = '';
+    let done = 0;
+
+    // 날짜 네비게이터
+    const navLabel = document.getElementById('dayNavLabel');
+    if(AppState.isToday()){
+      navLabel.textContent = '오늘';
+      navLabel.classList.remove('past');
+    } else {
+      navLabel.textContent =
+        `${vd.getMonth()+1}월 ${vd.getDate()}일 (${Config.DAY_NAMES[vd.getDay()]}) · 어제`;
+      navLabel.classList.add('past');
+    }
+    document.getElementById('dayPrev').disabled = (AppState.viewOffset <= -1);
+    document.getElementById('dayNext').disabled = (AppState.viewOffset >= 0);
+
+    // 항목 카드
+    tasks.forEach(t => {
+      const isDone = !!day.checks[t.id];
+      if(isDone) done++;
+      const cls = t.type;
+      const el = document.createElement('div');
+      el.className = 'task' + (isDone ? ' done' : '');
+
+      let logHTML = '';
+      if(t.id === 'workout'){
+        logHTML = t.workout.type === 'gym'
+          ? Workout.buildGymLogHTML(k, t.workout)
+          : Workout.buildBodyLogHTML(k, t.workout);
+      }
+      el.innerHTML = `
+        <span class="stripe ${cls}"></span>
+        <div class="row">
+          <div class="box">${Config.CHK}</div>
+          <div class="info">
+            <div class="tt">${t.name}</div>
+            ${t.desc ? `<div class="td">${t.desc}</div>` : ''}
+          </div>
+          <span class="pill ${cls}">${t.pill}</span>
+        </div>
+        ${logHTML ? `<div class="logarea">${logHTML}</div>` : ''}
+      `;
+      el.querySelector('.row').addEventListener('click', () => Routine.toggleCheck(t.id));
+      wrap.appendChild(el);
+      if(t.id === 'workout') Workout.wire(el, k, t.workout);
+    });
+
+    // 진행률 링
+    document.getElementById('doneCount').textContent = done;
+    document.getElementById('totalCount').textContent = '/' + tasks.length;
+    const pct = tasks.length ? Math.round(done/tasks.length*100) : 0;
+    const C = 113.1;
+    document.getElementById('ringFill').style.strokeDashoffset = C - C*pct/100;
+    document.getElementById('ringPct').textContent = pct + '%';
+
+    // 하단 메모 + SQLD D-day
+    let noteText = AppState.isToday()
+      ? Config.NOTES[vd.getDay()] + ' 완벽보다 빈도 — 최소 기준만 넘기면 오늘은 성공입니다.'
+      : '어제 기록을 확인·수정하고 있습니다. 빠뜨린 항목이 있다면 지금 채워두십시오.';
+    const dday = DateUtil.ddayToExam();
+    if(AppState.isToday() && dday > 0){
+      noteText += ` · SQLD 시험(8/22)까지 D-${dday}`;
+    }
+    document.getElementById('todayNote').textContent = noteText;
+  },
+
+  // ----- 연속 달성 표시 -----
+  streak(){
+    const s = Stats.streak();
+    document.getElementById('streakVal').textContent = s;
+    document.getElementById('flameIco').style.filter =
+      s > 0 ? 'none' : 'grayscale(1) opacity(.4)';
+  },
+
+  // ----- 독서 탭 -----
+  reading(){
+    const list = document.getElementById('bookList');
+    list.innerHTML = '';
+    const reading = Store.books.filter(b => !b.done);
+    const finished = Store.books.filter(b => b.done);
+    document.getElementById('readMeta').textContent =
+      `읽는 중 ${reading.length} · 완독 ${finished.length}`;
+
+    if(Store.books.length === 0){
+      list.innerHTML = '<div class="emptyStat">아직 등록된 책이 없습니다.<br>+ 새 책 추가로 시작하십시오.</div>';
+      return;
+    }
+    [...reading, ...finished].forEach(b => {
+      const pct = b.total>0 ? Math.min(100, Math.round(b.current/b.total*100)) : 0;
+      const div = document.createElement('div');
+      div.className = 'bookcard' + (b.done ? ' fin' : '');
+      div.innerHTML = `
+        <span class="stripe"></span>
+        <div class="bookhead">
+          <div style="flex:1">
+            <div class="bt">${b.title} ${b.done ? '<span class="finTag">완독</span>' : ''}</div>
+            <div class="bp">${b.current} / ${b.total} 페이지 · ${pct}%</div>
+          </div>
+          <button class="delbook" data-id="${b.id}">×</button>
+        </div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        ${b.done ? '' : `
+          <input type="range" class="prange" min="0" max="${b.total}" value="${b.current}" data-id="${b.id}">
+          <div class="pcontrol">
+            <input type="number" inputmode="numeric" class="pin" value="${b.current}" data-id="${b.id}">
+            <span class="ptot">/ ${b.total}p</span>
+            <button class="setp" data-id="${b.id}">기록</button>
+          </div>`}
+      `;
+      list.appendChild(div);
+    });
+    // 이벤트 연결
+    list.querySelectorAll('.delbook').forEach(b =>
+      b.onclick = () => Reading.deleteBook(b.dataset.id));
+    list.querySelectorAll('.prange').forEach(r => {
+      r.oninput = () => { list.querySelector(`.pin[data-id="${r.dataset.id}"]`).value = r.value; };
+      r.onchange = () => Reading.updatePage(r.dataset.id, parseInt(r.value));
+    });
+    list.querySelectorAll('.setp').forEach(b =>
+      b.onclick = () => {
+        const pin = list.querySelector(`.pin[data-id="${b.dataset.id}"]`);
+        Reading.updatePage(b.dataset.id, parseInt(pin.value) || 0);
+      });
+  },
+
+  // ----- 시험 TODO 탭 -----
+  todo(){
+    const list = document.getElementById('todoList');
+    list.innerHTML = '';
+    const open = Store.todos.filter(t => !t.done);
+    const done = Store.todos.filter(t => t.done);
+    document.getElementById('todoMeta').textContent = `남은 일 ${open.length}`;
+
+    if(Store.todos.length === 0){
+      list.innerHTML = '<div class="emptyStat">등록된 할 일이 없습니다.<br>+ 할 일 추가로 시작하십시오.</div>';
+      return;
+    }
+    [...open, ...done].forEach(t => {
+      const div = document.createElement('div');
+      div.className = 'todo' + (t.done ? ' done' : '');
+      div.innerHTML = `
+        <div class="box" data-id="${t.id}">${Config.CHK}</div>
+        <div class="ti">
+          <div class="tx">${t.text}</div>
+          ${t.tag ? `<div class="tmeta">${t.tag}</div>` : ''}
+        </div>
+        <button class="deltodo" data-id="${t.id}">×</button>`;
+      list.appendChild(div);
+    });
+    list.querySelectorAll('.box').forEach(b =>
+      b.onclick = () => Todo.toggle(b.dataset.id));
+    list.querySelectorAll('.deltodo').forEach(b =>
+      b.onclick = () => Todo.remove(b.dataset.id));
+  },
+
+  // ----- 월간 기록 탭 -----
+  stats(){
+    const mk = DateUtil.mkey(AppState.statMonth);
+    document.getElementById('mLabel').textContent =
+      `${AppState.statMonth.getFullYear()}년 ${AppState.statMonth.getMonth()+1}월`;
+
+    const {bAgg, gAgg, workoutDays, monthPages, finishedBooks, totalVol}
+      = Stats.monthly(mk);
+
+    let html = '';
+    // 운동 요약
+    html += `<div class="sect-t"><span class="dot"></span><h2>운동 요약</h2></div>`;
+    html += `<div class="statgrid">
+      <div class="scard"><span class="stripe" style="background:var(--body)"></span>
+        <div class="sk">운동한 날</div>
+        <div class="sv">${workoutDays}<span class="su"> 일</span></div></div>
+      <div class="scard"><span class="stripe" style="background:var(--gym)"></span>
+        <div class="sk">헬스 총 볼륨</div>
+        <div class="sv">${totalVol.toLocaleString()}<span class="su"> kg</span></div></div>
+    </div>`;
+
+    // 맨몸운동 누적
+    html += `<div class="sect-t"><span class="dot"></span><h2>맨몸운동 누적</h2></div>`;
+    if(Object.keys(bAgg).length){
+      html += `<div class="statgrid">`;
+      for(const ex in Config.BODY_LOG){
+        if(bAgg[ex]){
+          const m = Config.BODY_LOG[ex];
+          html += `<div class="scard"><span class="stripe" style="background:var(--body)"></span>
+            <div class="sk">${m.label}</div>
+            <div class="sv">${bAgg[ex].toLocaleString()}<span class="su"> ${m.unit}</span></div></div>`;
+        }
+      }
+      html += `</div>`;
+    } else {
+      html += `<div class="emptyStat">이번 달 맨몸운동 기록이 없습니다.</div>`;
+    }
+
+    // 헬스 종목별 볼륨
+    html += `<div class="sect-t"><span class="dot"></span><h2>헬스 종목별 볼륨</h2></div>`;
+    if(Object.keys(gAgg).length){
+      html += `<div class="scard wide"><span class="stripe" style="background:var(--gym)"></span>
+        <div class="volist">`;
+      Object.entries(gAgg).sort((a,b) => b[1]-a[1]).forEach(([ex,vol]) => {
+        html += `<div class="volrow"><span class="vn">${ex}</span>
+          <span class="vv">${vol.toLocaleString()} kg</span></div>`;
+      });
+      html += `</div></div>`;
+    } else {
+      html += `<div class="emptyStat">이번 달 헬스 기록이 없습니다.</div>`;
+    }
+
+    // 독서 요약
+    html += `<div class="sect-t"><span class="dot"></span><h2>독서 요약</h2></div>`;
+    html += `<div class="statgrid">
+      <div class="scard"><span class="stripe" style="background:var(--accent)"></span>
+        <div class="sk">읽은 페이지</div>
+        <div class="sv">${monthPages.toLocaleString()}<span class="su"> p</span></div></div>
+      <div class="scard"><span class="stripe" style="background:var(--done)"></span>
+        <div class="sk">완독한 책</div>
+        <div class="sv">${finishedBooks.length}<span class="su"> 권</span></div></div>
+    </div>`;
+    if(finishedBooks.length){
+      html += `<div class="scard wide" style="margin-top:9px"><span class="stripe" style="background:var(--done)"></span>
+        <div class="volist">`;
+      finishedBooks.forEach(b => {
+        html += `<div class="volrow"><span class="vn">${b.title}</span>
+          <span class="vv">${b.total}p</span></div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    document.getElementById('statsBody').innerHTML = html;
+  },
+};
+
+/* ===================== Share: 공유 이미지 생성 ===================== */
+const Share = {
+  // 보고 있는 날짜의 핵심 기록을 축약 수집
+  collect(){
+    const vd = AppState.viewDate();
+    const k = DateUtil.dkey(vd);
+    const day = Store.days[k] || {checks:{}};
+    const tasks = Schedule.buildTasks();
+    const doneCount = tasks.filter(t => day.checks[t.id]).length;
+    const pct = tasks.length ? Math.round(doneCount/tasks.length*100) : 0;
+
+    const doneLabels = tasks.filter(t => day.checks[t.id]).map(t => {
+      if(t.id === 'workout') return t.workout.type==='gym' ? '헬스' : '맨몸운동';
+      return t.pill;
+    });
+
+    const highlights = [];
+    const gymVol = Stats.gymVolumeOf(k);
+    if(gymVol > 0) highlights.push({label:'헬스 볼륨', value:gymVol.toLocaleString()+' kg'});
+    Store.bodyLogs.filter(l => l.date===k).forEach(l => {
+      const m = Config.BODY_LOG[l.ex];
+      if(m) highlights.push({label:m.label, value:l.value.toLocaleString()+' '+m.unit});
+    });
+    const readPages = Store.readLogs.filter(l => l.date===k)
+      .reduce((s,l) => s + l.pages, 0);
+    if(readPages > 0) highlights.push({label:'독서', value:readPages+' p'});
+
+    // 그날 완독한 책 제목 목록
+    const finishedBooks = Store.books
+      .filter(b => b.done && b.finDate === k)
+      .map(b => b.title);
+
+    return {
+      dateStr:`${vd.getFullYear()}. ${String(vd.getMonth()+1).padStart(2,'0')}. ${String(vd.getDate()).padStart(2,'0')}`,
+      dowStr:Config.DAY_NAMES[vd.getDay()]+'요일',
+      doneCount, total:tasks.length, pct,
+      doneLabels, highlights, finishedBooks,
+      streak:Stats.streak(),
+    };
+  },
+
+  // 라운드 사각형 path 헬퍼
+  _roundRect(ctx, x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  },
+
+  // 9:16 스토리 카드를 캔버스에 그림
+  draw(){
+    const d = this.collect();
+    const cv = document.getElementById('shareCanvas');
+    const ctx = cv.getContext('2d');
+    const W = 1080, H = 1920;
+    const rr = (x,y,w,h,r) => this._roundRect(ctx,x,y,w,h,r);
+
+    // 배경
+    let bg = ctx.createLinearGradient(0,0,W,H);
+    bg.addColorStop(0,'#171a19');
+    bg.addColorStop(1,'#0c0e0d');
+    ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+    // 상단 오렌지 글로우
+    let glow = ctx.createRadialGradient(W*0.82,H*0.04,0,W*0.82,H*0.04,W*0.95);
+    glow.addColorStop(0,'rgba(216,102,47,0.30)');
+    glow.addColorStop(1,'rgba(216,102,47,0)');
+    ctx.fillStyle = glow; ctx.fillRect(0,0,W,H);
+
+    // 외곽 테두리
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.lineWidth = 2;
+    rr(40,40,W-80,H-80,40); ctx.stroke();
+
+    const cx = W/2;
+    ctx.textAlign = 'center';
+
+    // 태그
+    ctx.fillStyle = '#e8915f';
+    ctx.font = '600 30px "IBM Plex Sans KR", sans-serif';
+    ctx.fillText('T O D A Y   I   S T A R T', cx, 200);
+
+    // 제목
+    ctx.fillStyle = '#e8e6e0';
+    ctx.font = '900 92px "Black Han Sans", sans-serif';
+    ctx.fillText('오늘부터 갓생', cx, 310);
+
+    // 날짜
+    ctx.fillStyle = '#9aa0a0';
+    ctx.font = '400 38px "Gowun Batang", serif';
+    ctx.fillText(`${d.dateStr}  ·  ${d.dowStr}`, cx, 380);
+
+    // 달성률 원형 게이지
+    const ringCx = cx, ringCy = 660, ringR = 190;
+    ctx.lineWidth = 34;
+    ctx.strokeStyle = '#2c3134';
+    ctx.beginPath();
+    ctx.arc(ringCx, ringCy, ringR, 0, Math.PI*2); ctx.stroke();
+    if(d.pct > 0){
+      let rg = ctx.createLinearGradient(ringCx-ringR,ringCy,ringCx+ringR,ringCy);
+      rg.addColorStop(0,'#d8662f'); rg.addColorStop(1,'#e8915f');
+      ctx.strokeStyle = rg;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(ringCx, ringCy, ringR, -Math.PI/2, -Math.PI/2 + Math.PI*2*d.pct/100);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+    ctx.fillStyle = '#e8e6e0';
+    ctx.font = '900 150px "Black Han Sans", sans-serif';
+    ctx.fillText(d.pct+'%', ringCx, ringCy+38);
+    ctx.fillStyle = '#646b6b';
+    ctx.font = '500 36px "IBM Plex Sans KR", sans-serif';
+    ctx.fillText(`${d.doneCount} / ${d.total} 완료`, ringCx, ringCy+115);
+
+    // 연속 달성일 알약
+    const pillW = 380, pillH = 92, pillY = 940;
+    ctx.fillStyle = 'rgba(216,102,47,0.14)';
+    rr(cx-pillW/2, pillY, pillW, pillH, 46); ctx.fill();
+    ctx.strokeStyle = 'rgba(216,102,47,0.4)';
+    ctx.lineWidth = 2;
+    rr(cx-pillW/2, pillY, pillW, pillH, 46); ctx.stroke();
+    ctx.fillStyle = '#e8915f';
+    ctx.font = '700 44px "IBM Plex Sans KR", sans-serif';
+    ctx.fillText(`🔥  연속 ${d.streak}일`, cx, pillY+60);
+
+    // 핵심 기록 영역
+    const secY = 1130;
+    ctx.fillStyle = '#646b6b';
+    ctx.font = '600 32px "IBM Plex Sans KR", sans-serif';
+    ctx.fillText('— 오늘의 기록 —', cx, secY);
+
+    let afterRecordsY;
+    if(d.highlights.length){
+      const items = d.highlights.slice(0,4);
+      const cardW = 440, cardH = 150, gap = 28, cols = 2;
+      const rows = Math.ceil(items.length/cols);
+      const totalW = cardW*cols + gap;
+      const startX = cx - totalW/2;
+      const gy = secY + 60;
+      items.forEach((it,i) => {
+        const r = Math.floor(i/cols), c = i%cols;
+        const x = startX + c*(cardW+gap);
+        const y = gy + r*(cardH+gap);
+        ctx.fillStyle = '#1d2123';
+        rr(x,y,cardW,cardH,24); ctx.fill();
+        ctx.strokeStyle = '#2c3134'; ctx.lineWidth = 2;
+        rr(x,y,cardW,cardH,24); ctx.stroke();
+        ctx.fillStyle = '#d8662f';
+        rr(x,y+28,8,cardH-56,4); ctx.fill();
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#9aa0a0';
+        ctx.font = '500 30px "IBM Plex Sans KR", sans-serif';
+        ctx.fillText(it.label, x+44, y+62);
+        ctx.fillStyle = '#e8e6e0';
+        ctx.font = '900 56px "Black Han Sans", sans-serif';
+        ctx.fillText(it.value, x+44, y+122);
+        ctx.textAlign = 'center';
+      });
+      afterRecordsY = gy + rows*cardH + (rows-1)*gap;
+    } else {
+      ctx.fillStyle = '#646b6b';
+      ctx.font = '400 36px "Gowun Batang", serif';
+      ctx.fillText('기록된 수치가 없습니다', cx, secY+90);
+      afterRecordsY = secY + 130;
+    }
+
+    // 완료 루틴 태그가 끝난 y (다음 요소 배치 기준)
+    let afterTagsY = afterRecordsY;
+    if(d.doneLabels.length){
+      let ty = afterRecordsY + 76;
+      ctx.fillStyle = '#646b6b';
+      ctx.font = '600 32px "IBM Plex Sans KR", sans-serif';
+      ctx.fillText('— 완료한 루틴 —', cx, ty);
+      ty += 58;
+      ctx.font = '600 34px "IBM Plex Sans KR", sans-serif';
+      const padX = 30, tagH = 66, tagGap = 18;
+      const widths = d.doneLabels.map(l => ctx.measureText(l).width + padX*2);
+      const maxW = W - 160;
+      let lines = [[]], lineW = [0];
+      d.doneLabels.forEach((l,i) => {
+        const w = widths[i];
+        const cur = lines.length-1;
+        if(lineW[cur] + w + (lines[cur].length?tagGap:0) > maxW){
+          lines.push([]); lineW.push(0);
+        }
+        const c = lines.length-1;
+        lines[c].push({label:l, w});
+        lineW[c] += w + (lines[c].length>1?tagGap:0);
+      });
+      lines.forEach((line,li) => {
+        let sx = cx - lineW[li]/2;
+        const y = ty + li*(tagH+tagGap);
+        line.forEach(tag => {
+          ctx.fillStyle = 'rgba(127,174,106,0.16)';
+          rr(sx,y,tag.w,tagH,33); ctx.fill();
+          ctx.strokeStyle = 'rgba(127,174,106,0.4)';
+          ctx.lineWidth = 2;
+          rr(sx,y,tag.w,tagH,33); ctx.stroke();
+          ctx.fillStyle = '#9ed6b5';
+          ctx.fillText(tag.label, sx+tag.w/2, y+44);
+          sx += tag.w + tagGap;
+        });
+      });
+      afterTagsY = ty + lines.length*tagH + (lines.length-1)*tagGap;
+    }
+
+    // 완독한 책 배너 — 그날 다 읽은 책이 있으면 표시
+    if(d.finishedBooks.length){
+      let by = afterTagsY + 56;
+      ctx.fillStyle = '#646b6b';
+      ctx.font = '600 32px "IBM Plex Sans KR", sans-serif';
+      ctx.fillText('— 오늘 완독 —', cx, by);
+      by += 44;
+      d.finishedBooks.forEach(title => {
+        // 제목이 길면 줄임 처리
+        ctx.font = '700 38px "IBM Plex Sans KR", sans-serif';
+        let shown = title;
+        const maxTextW = W - 320;
+        while(ctx.measureText('📖  '+shown).width > maxTextW && shown.length > 1){
+          shown = shown.slice(0,-1);
+        }
+        if(shown !== title) shown += '…';
+        const label = '📖  ' + shown;
+        const bannerW = Math.min(W-140, ctx.measureText(label).width + 80);
+        const bannerH = 88;
+        const bx = cx - bannerW/2;
+        ctx.fillStyle = 'rgba(111,185,143,0.15)';
+        rr(bx, by, bannerW, bannerH, 22); ctx.fill();
+        ctx.strokeStyle = 'rgba(111,185,143,0.45)';
+        ctx.lineWidth = 2;
+        rr(bx, by, bannerW, bannerH, 22); ctx.stroke();
+        ctx.fillStyle = '#9ed6b5';
+        ctx.fillText(label, cx, by + 56);
+        by += bannerH + 16;
+      });
+    }
+
+    // 하단 서명
+    ctx.fillStyle = '#4a5050';
+    ctx.font = '600 30px "IBM Plex Sans KR", sans-serif';
+    ctx.fillText('오늘부터 갓생  ·  Routine Tracker', cx, H-110);
+  },
+
+  open(){
+    document.getElementById('shareModal').classList.add('show');
+    // 폰트 로딩 완료 후 그려야 한글이 정상 적용됨
+    if(document.fonts && document.fonts.ready){
+      document.fonts.ready.then(() => this.draw());
+    } else {
+      setTimeout(() => this.draw(), 100);
+    }
+  },
+  close(){
+    document.getElementById('shareModal').classList.remove('show');
+  },
+  download(){
+    const cv = document.getElementById('shareCanvas');
+    const fname = `갓생_${DateUtil.dkey(AppState.viewDate())}.png`;
+    cv.toBlob(blob => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = fname;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      UI.toast('이미지를 저장했습니다');
+    }, 'image/png');
+  },
+};
+
+/* ===================== UI: 토스트·탭·이벤트 바인딩 ===================== */
+const UI = {
+  _toastTimer: null,
+
+  toast(msg){
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => t.classList.remove('show'), 1900);
+  },
+
+  // 책/할일 추가 폼 토글
+  toggleAdd(which){
+    document.getElementById(which==='book' ? 'addBook' : 'addTodo')
+      .classList.toggle('hidden');
+  },
+
+  // 탭 전환
+  switchTab(v){
+    document.querySelectorAll('.tab').forEach(x =>
+      x.classList.toggle('active', x.dataset.tab === v));
+    ['today','reading','todo','stats'].forEach(name =>
+      document.getElementById('view-'+name).classList.toggle('hidden', name !== v));
+    document.getElementById('footerToday').style.display =
+      v==='today' ? 'flex' : 'none';
+    if(v === 'today'){ AppState.resetViewDay(); Render.today(); }
+    if(v === 'reading') Render.reading();
+    if(v === 'todo') Render.todo();
+    if(v === 'stats') Render.stats();
+  },
+
+  // data-action 속성 기반 이벤트 위임
+  ACTIONS: {
+    'day-prev':       () => AppState.shiftViewDay(-1),
+    'day-next':       () => AppState.shiftViewDay(1),
+    'toggle-add-book':() => UI.toggleAdd('book'),
+    'add-book':       () => Reading.addBook(),
+    'toggle-add-todo':() => UI.toggleAdd('todo'),
+    'add-todo':       () => Todo.add(),
+    'month-prev':     () => AppState.shiftMonth(-1),
+    'month-next':     () => AppState.shiftMonth(1),
+    'reset-today':    () => Routine.reset(),
+    'open-share':     () => Share.open(),
+    'complete-all':   () => Routine.completeAll(),
+    'close-share':    () => Share.close(),
+    'download-share': () => Share.download(),
+  },
+
+  bindEvents(){
+    // data-action 클릭 위임
+    document.body.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if(btn && this.ACTIONS[btn.dataset.action]){
+        this.ACTIONS[btn.dataset.action]();
+      }
+    });
+    // 탭
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => this.switchTab(tab.dataset.tab));
+    });
+  },
+};
+
+/* ===================== init: 앱 시작 ===================== */
 (function init(){
-  const d=new Date();
-  document.getElementById('dateBar').textContent=
-    `${d.getMonth()+1}월 ${d.getDate()}일 ${DAY_NAMES[d.getDay()]}요일`;
-  renderToday();
-  renderStreak();
+  Store.load();
+  UI.bindEvents();
+
+  const d = new Date();
+  document.getElementById('dateBar').textContent =
+    `${d.getMonth()+1}월 ${d.getDate()}일 ${Config.DAY_NAMES[d.getDay()]}요일`;
+
+  Render.today();
+  Render.streak();
 })();
 </script>
 </body>
