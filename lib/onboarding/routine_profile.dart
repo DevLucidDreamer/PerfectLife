@@ -568,19 +568,50 @@ class ReadingPlan {
       );
 }
 
+/// 공부 항목: 이름 + 주간 빈도(주 N회).
+///
+/// daysPerWeek 7이면 매일, 그 외에는 RoutineTemplates.weekdaysFor로 요일을 분배한다.
+/// 그래서 자격증(주 1회)·어학(주 3회)처럼 매일이 아닌 공부도 다룰 수 있다.
+class StudyItem {
+  final String name;
+  final int daysPerWeek; // 1~7 (7 = 매일)
+  StudyItem({required this.name, this.daysPerWeek = 7});
+
+  /// 이 공부가 배정되는 요일들 (0=일 ~ 6=토).
+  List<int> get weekdays => RoutineTemplates.weekdaysFor(daysPerWeek);
+
+  /// 해당 날짜에 이 공부 항목이 배정되는지.
+  bool scheduledOn(DateTime d) => weekdays.contains(d.weekday % 7);
+
+  /// 빈도 라벨 ("매일" 또는 "주 N회").
+  String get freqLabel => daysPerWeek >= 7 ? '매일' : '주 $daysPerWeek회';
+
+  Map<String, dynamic> toJson() => {'name': name, 'daysPerWeek': daysPerWeek};
+
+  /// 신 스키마({name, daysPerWeek})와 구 스키마(문자열, 매일로 간주) 모두 허용.
+  factory StudyItem.fromJson(dynamic j) {
+    if (j is String) return StudyItem(name: j, daysPerWeek: 7);
+    final m = j as Map<String, dynamic>;
+    return StudyItem(
+      name: m['name'] as String? ?? '',
+      daysPerWeek: (m['daysPerWeek'] as num?)?.toInt() ?? 7,
+    );
+  }
+}
+
 /// 사용자 루틴 프로필 전체. 온보딩 완료 시 AppData에 저장된다.
 class RoutineProfile {
   final bool onboarded;
   final WorkoutPlan? workout; // 운동 미선택 시 null
   final ReadingPlan? reading; // 독서 미선택 시 null
-  final List<String> study; // 공부 항목 (자유 입력)
+  final List<StudyItem> study; // 공부 항목 (이름 + 주간 빈도)
   final List<String> hobby; // 취미 항목 (자유 입력)
 
   RoutineProfile({
     this.onboarded = false,
     this.workout,
     this.reading,
-    List<String>? study,
+    List<StudyItem>? study,
     List<String>? hobby,
   })  : study = study ?? const [],
         hobby = hobby ?? const [];
@@ -589,7 +620,7 @@ class RoutineProfile {
         'onboarded': onboarded,
         'workout': workout?.toJson(),
         'reading': reading?.toJson(),
-        'study': study,
+        'study': study.map((e) => e.toJson()).toList(),
         'hobby': hobby,
       };
 
@@ -601,7 +632,9 @@ class RoutineProfile {
         reading: j['reading'] == null
             ? null
             : ReadingPlan.fromJson(j['reading'] as Map<String, dynamic>),
-        study: (j['study'] as List?)?.map((e) => e as String).toList() ?? [],
+        study:
+            (j['study'] as List?)?.map((e) => StudyItem.fromJson(e)).toList() ??
+                [],
         hobby: (j['hobby'] as List?)?.map((e) => e as String).toList() ?? [],
       );
 }

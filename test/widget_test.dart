@@ -34,7 +34,7 @@ void main() {
     store.saveProfile(RoutineProfile(
       onboarded: true,
       reading: ReadingPlan(pagesPerDay: 20),
-      study: const ['토익 단어 30개'],
+      study: [StudyItem(name: '토익 단어 30개')],
     ));
 
     await tester.pumpWidget(
@@ -179,6 +179,67 @@ void main() {
     final text = workoutShareText(store);
     expect(text, contains('벤치 30 - 20 - 2'));
     expect(text, contains('스쿼트 60 - 10 - 2, 50 - 12 - 1'));
+  });
+
+  test('StudyItem: 주간 빈도로 배정 요일이 정해지고 JSON 라운드트립된다', () {
+    final daily = StudyItem(name: '토익', daysPerWeek: 7);
+    final weekly1 = StudyItem(name: '정처기', daysPerWeek: 1);
+    // 매일은 모든 요일 배정.
+    for (int dow = 0; dow < 7; dow++) {
+      expect(daily.scheduledOn(DateTime(2026, 6, 7 + dow)), true);
+    }
+    // 주 1회는 단 하루만 배정(weekdaysFor(1) == [수]).
+    final scheduled = [
+      for (int dow = 0; dow < 7; dow++)
+        if (weekly1.scheduledOn(DateTime(2026, 6, 7 + dow))) dow
+    ];
+    expect(scheduled.length, 1);
+    // 구 스키마(문자열)는 매일로 마이그레이션.
+    expect(StudyItem.fromJson('레거시').daysPerWeek, 7);
+    // 신 스키마 라운드트립.
+    final back = StudyItem.fromJson(weekly1.toJson());
+    expect(back.name, '정처기');
+    expect(back.daysPerWeek, 1);
+  });
+
+  test('주간 공부는 배정 요일에만 오늘 항목으로 뜬다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = Store();
+    await store.init();
+    final weekly = StudyItem(name: '정처기', daysPerWeek: 1);
+    store.saveProfile(RoutineProfile(onboarded: true, study: [weekly]));
+    // 배정된 요일과 아닌 요일을 찾아 각각 확인.
+    DateTime? onDay, offDay;
+    for (int i = 0; i < 7; i++) {
+      final d = DateTime(2026, 6, 7 + i);
+      if (weekly.scheduledOn(d)) {
+        onDay = d;
+      } else {
+        offDay = d;
+      }
+    }
+    expect(store.buildTasksForDate(onDay!).any((t) => t.id == 'study0'), true);
+    expect(store.buildTasksForDate(offDay!).any((t) => t.id == 'study0'), false);
+    // 배정되지 않은 날은 항목이 없으므로 완료로 간주(연속 안 끊김).
+    expect(store.isDayComplete(offDay), true);
+  });
+
+  test('취미는 미완료여도 연속·완료 판정에 영향이 없다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = Store();
+    await store.init();
+    store.saveProfile(RoutineProfile(
+      onboarded: true,
+      reading: ReadingPlan(pagesPerDay: 20),
+      hobby: const ['기타 연습'],
+    ));
+    final d = DateTime(2026, 6, 8);
+    // 필수(독서)만 체크하고 취미는 미체크.
+    store.day(DateUtil.dkey(d)).checks['read'] = true;
+    // 취미 항목은 오늘 탭에 뜬다.
+    expect(store.buildTasksForDate(d).any((t) => t.type == 'hobby'), true);
+    // 그래도 하루는 완료로 판정된다(취미 제외).
+    expect(store.isDayComplete(d), true);
   });
 
   test('addGymExerciseForDate: 그 날 분할에 종목을 추가한다', () async {

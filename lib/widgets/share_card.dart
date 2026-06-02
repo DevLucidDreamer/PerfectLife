@@ -40,9 +40,12 @@ _ShareData _collect(Store store) {
   final k = DateUtil.dkey(vd);
   final day = store.data.days[k];
   final tasks = store.buildTasks();
-  final doneCount = tasks.where((t) => day?.checks[t.id] == true).length;
-  final pct = tasks.isEmpty ? 0 : (doneCount / tasks.length * 100).round();
+  // 취미 등 optional 항목은 진행률/연속 계산에서 제외(강제성 없음).
+  final required = tasks.where((t) => !t.optional).toList();
+  final doneCount = required.where((t) => day?.checks[t.id] == true).length;
+  final pct = required.isEmpty ? 0 : (doneCount / required.length * 100).round();
 
+  // 완료 태그는 체크된 항목 전체(취미 포함)를 보여준다.
   final doneLabels = tasks.where((t) => day?.checks[t.id] == true).map((t) {
     if (t.id == 'workout') return t.workout!.type == 'gym' ? '헬스' : '맨몸운동';
     return t.pill;
@@ -70,7 +73,7 @@ _ShareData _collect(Store store) {
     dateStr: '${vd.year}. ${pad(vd.month)}. ${pad(vd.day)}',
     dowStr: '${Config.dayNames[vd.weekday % 7]}요일',
     doneCount: doneCount,
-    total: tasks.length,
+    total: required.length,
     pct: pct,
     doneLabels: doneLabels,
     highlights: highlights.take(4).toList(),
@@ -253,12 +256,14 @@ class _ShareCardView extends StatelessWidget {
                 borderRadius: BorderRadius.circular(40),
               ),
             ),
-            // 내용
-            Padding(
-              padding: const EdgeInsets.fromLTRB(70, 130, 70, 90),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
+            // 내용 — Stack의 비배치 자식은 loose 제약을 받아 좁게 좌측 정렬되므로,
+            // SizedBox(width: infinity)로 카드 전체 폭을 차지하게 해 중앙 정렬을 보장한다.
+            Positioned.fill(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(70, 130, 70, 90),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
                   Text('T O D A Y   I   S T A R T',
                       style: AppFonts.sans(
                           size: 30,
@@ -300,7 +305,8 @@ class _ShareCardView extends StatelessWidget {
                   const Spacer(),
                   Text('오늘부터 갓생  ·  Routine Tracker',
                       style: AppFonts.sans(size: 30, color: const Color(0xFF4A5050))),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

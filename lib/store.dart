@@ -177,13 +177,26 @@ class Store extends ChangeNotifier {
         desc: '독서 탭에서 진도를 기록하십시오',
       ));
     }
+    // 공부: 주간 빈도에 따라 배정된 요일에만 표시한다.
+    // (배정되지 않은 날은 항목 자체가 없으므로 연속을 끊지 않는다.)
     for (var i = 0; i < p.study.length; i++) {
+      final s = p.study[i];
+      if (!s.scheduledOn(d)) continue;
       list.add(TaskItem(
-          id: 'study$i', pill: '공부', type: 'study', name: p.study[i]));
+        id: 'study$i',
+        pill: '공부',
+        type: 'study',
+        name: s.daysPerWeek >= 7 ? s.name : '${s.name} · ${s.freqLabel}',
+      ));
     }
+    // 취미: 매일 표시하되 optional — 체크하지 않아도 연속·진행률에 영향이 없다.
     for (var i = 0; i < p.hobby.length; i++) {
       list.add(TaskItem(
-          id: 'hobby$i', pill: '취미', type: 'daily', name: p.hobby[i]));
+          id: 'hobby$i',
+          pill: '취미',
+          type: 'hobby',
+          name: p.hobby[i],
+          optional: true));
     }
     return list;
   }
@@ -219,7 +232,9 @@ class Store extends ChangeNotifier {
   /// 하루 완료 여부 (연속 달성 판정용). 그 날 생성되는 할 일을 모두 체크하면 완료.
   /// 할 일이 없는 날(예: 운동만 선택한 사용자의 휴식일)은 연속을 끊지 않는다.
   bool isDayComplete(DateTime d) {
-    final tasks = buildTasksForDate(d);
+    // 취미 등 optional 항목은 연속 달성 판정에서 제외한다(강제성 없음).
+    final tasks =
+        buildTasksForDate(d).where((t) => !t.optional).toList();
     if (tasks.isEmpty) return true;
     final rec = data.days[DateUtil.dkey(d)];
     if (rec == null) return false;
@@ -401,6 +416,9 @@ class TaskItem {
   final String name;
   final String? desc;
   final WorkoutDay? workout;
+
+  /// true면 연속 달성·진행률 계산에서 제외(취미 등 강제성 없는 항목).
+  final bool optional;
   TaskItem({
     required this.id,
     required this.pill,
@@ -408,6 +426,7 @@ class TaskItem {
     required this.name,
     this.desc,
     this.workout,
+    this.optional = false,
   });
 }
 

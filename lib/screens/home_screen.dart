@@ -80,7 +80,9 @@ class _Header extends StatelessWidget {
     final dateStr =
         '${now.month}월 ${now.day}일 ${Config.dayNames[now.weekday % 7]}요일';
 
-    final tasks = store.buildTasks();
+    // 취미 등 optional 항목은 진행률에서 제외(강제성 없음).
+    final tasks =
+        store.buildTasks().where((t) => !t.optional).toList();
     final day = store.data.days[DateUtil.dkey(store.viewDate())];
     final done = tasks.where((t) => day?.checks[t.id] == true).length;
     final pct = tasks.isEmpty ? 0 : (done / tasks.length * 100).round();

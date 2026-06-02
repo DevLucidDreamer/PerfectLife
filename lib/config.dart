@@ -165,6 +165,7 @@ class AppColors {
   static const body = Color(0xFF7FAE6A);
   static const done = Color(0xFF6FB98F);
   static const study = Color(0xFFB98FD6);
+  static const hobby = Color(0xFFD68FA8);
 
   /// 루틴 타입(type)별 stripe/pill 색.
   static Color forType(String type) {
@@ -175,6 +176,8 @@ class AppColors {
         return body;
       case 'study':
         return study;
+      case 'hobby':
+        return hobby;
       case 'daily':
       default:
         return accent;

@@ -62,7 +62,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   int _pagesPerDay = 20;
   int _minutesPerDay = 30;
   // 공부 / 취미
-  final List<String> _study = [];
+  final List<StudyItem> _study = [];
   final List<String> _hobby = [];
 
   // 입력 컨트롤러
@@ -274,7 +274,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       onboarded: true,
       workout: wp,
       reading: rp,
-      study: _categories.contains('study') ? List.from(_study) : [],
+      study: _categories.contains('study') ? [..._study] : const [],
       hobby: _categories.contains('hobby') ? List.from(_hobby) : [],
     );
   }
@@ -359,13 +359,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       case 'reading':
         return _readingStep();
       case 'study':
-        return _listStep(
-          emoji: '✏️',
-          title: '공부 목표',
-          hint: '예: 토익 단어 30개, 인강 1강, 코딩테스트 1문제',
-          items: _study,
-          ctl: _studyAdd,
-        );
+        return _studyStep();
       case 'hobby':
         return _listStep(
           emoji: '🎨',
@@ -795,7 +789,128 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  // ---- 공부 / 취미 공통 ----
+  // ---- 공부 (항목별 주간 빈도) ----
+  List<Widget> _studyStep() {
+    void add(String raw) {
+      final v = raw.trim();
+      if (v.isEmpty || _study.any((s) => s.name == v)) return;
+      setState(() => _study.add(StudyItem(name: v, daysPerWeek: 7)));
+      _studyAdd.clear();
+    }
+
+    return [
+      _stepTitle('✏️', '공부 목표'),
+      _label('이어갈 공부 항목을 추가하고, 주 몇 회 할지 정하세요'),
+      for (int i = 0; i < _study.length; i++) _studyItemCard(i),
+      if (_study.isNotEmpty) const SizedBox(height: 4),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _studyAdd,
+              style: AppFonts.sans(size: 13, color: AppColors.ink),
+              textInputAction: TextInputAction.done,
+              onSubmitted: add,
+              inputFormatters: [LengthLimitingTextInputFormatter(24)],
+              decoration: inputDecoration('예: 토익 단어 30개, 자격증 인강 1강'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => add(_studyAdd.text),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              decoration: BoxDecoration(
+                color: AppColors.panel2,
+                border: Border.all(color: AppColors.line),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Text('추가',
+                  style: AppFonts.sans(
+                      size: 13,
+                      color: AppColors.accentSoft,
+                      weight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      Text('매일이 아니어도 괜찮아요. 자격증은 주 1회, 어학은 주 3회처럼 자유롭게 정하세요.',
+          style: AppFonts.serif(size: 12.5, color: AppColors.inkFaint)),
+    ];
+  }
+
+  Widget _studyItemCard(int i) {
+    if (i >= _study.length) return const SizedBox.shrink();
+    final s = _study[i];
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.panel,
+        border: Border.all(color: AppColors.line),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(s.name,
+                  style: AppFonts.sans(
+                      size: 14, color: AppColors.ink, weight: FontWeight.w600)),
+            ),
+            GestureDetector(
+              onTap: () => setState(() => _study.removeAt(i)),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text('×',
+                    style: AppFonts.sans(size: 18, color: AppColors.inkFaint)),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (int n = 1; n <= 7; n++)
+                _studyFreqChip(
+                  n,
+                  s.daysPerWeek == n,
+                  () => setState(() =>
+                      _study[i] = StudyItem(name: s.name, daysPerWeek: n)),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _studyFreqChip(int n, bool selected, VoidCallback onTap) {
+    final label = n >= 7 ? '매일' : '주 $n';
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.study : AppColors.panel,
+          border:
+              Border.all(color: selected ? AppColors.study : AppColors.line),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(label,
+            style: AppFonts.sans(
+                size: 12.5,
+                color: selected ? AppColors.bg : AppColors.inkDim,
+                weight: FontWeight.w600)),
+      ),
+    );
+  }
+
+  // ---- 취미 ----
   List<Widget> _listStep({
     required String emoji,
     required String title,
@@ -806,9 +921,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     return [
       _stepTitle(emoji, title),
       _label('매일 이어갈 항목을 자유롭게 추가하세요'),
-      _editableChips(items: items, ctl: ctl, color: AppColors.study, hint: hint),
+      _editableChips(items: items, ctl: ctl, color: AppColors.hobby, hint: hint),
       const SizedBox(height: 12),
-      Text('나중에 설정에서 언제든 수정할 수 있어요.',
+      Text('취미는 강제하지 않아요 — 완료하지 않아도 연속 일수는 유지됩니다.',
           style: AppFonts.serif(size: 12.5, color: AppColors.inkFaint)),
     ];
   }
@@ -831,7 +946,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ],
       if (p.study.isNotEmpty) ...[
         _label('공부'),
-        for (final s in p.study) _summaryLine(s, null),
+        for (final s in p.study) _summaryLine(s.name, s.freqLabel),
         const SizedBox(height: 14),
       ],
       if (p.hobby.isNotEmpty) ...[
