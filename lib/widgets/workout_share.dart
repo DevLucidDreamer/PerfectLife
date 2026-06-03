@@ -80,12 +80,12 @@ _WorkoutShareData _collect(Store store) {
   );
 }
 
-/// 헬스 한 종목을 텍스트 한 줄로: "벤치프레스 30 - 20 - 2" (다른 세트는 쉼표로 나열).
+/// 헬스 한 종목을 텍스트로: 세트(무게×횟수)가 바뀔 때마다 줄을 나눠
+/// "벤치프레스 30 - 20 - 2"처럼 종목 이름을 매번 다시 적는다.
 String _gymLine(_GymEntry e) {
-  final parts = e.groups
-      .map((g) => '${_fmtNum(g.w)} - ${_fmtNum(g.r)} - ${g.count}')
-      .join(', ');
-  return '${e.ex} $parts';
+  return e.groups
+      .map((g) => '${e.ex} ${_fmtNum(g.w)} - ${_fmtNum(g.r)} - ${g.count}')
+      .join('\n');
 }
 
 /// 복사용 텍스트. 형식: 날짜 / 이름 / (빈 줄) / 종목들.
