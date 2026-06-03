@@ -56,6 +56,43 @@
 </head>
 <body>
   <div id="loading"><div class="spinner"></div></div>
+  <script>
+    // PWA 설치 상태/설치 트리거를 Flutter(dart:js_interop)에서 호출할 수 있게 노출.
+    window.pwaInstall = (function () {
+      var deferred = null; // beforeinstallprompt 이벤트 보관
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault(); // 브라우저 기본 미니 배너 억제 → 우리가 직접 띄움
+        deferred = e;
+      });
+      window.addEventListener('appinstalled', function () {
+        deferred = null;
+      });
+      function standalone() {
+        return window.matchMedia('(display-mode: standalone)').matches
+          || window.matchMedia('(display-mode: fullscreen)').matches
+          || window.matchMedia('(display-mode: minimal-ui)').matches
+          || window.navigator.standalone === true; // iOS Safari
+      }
+      function ios() {
+        var ua = window.navigator.userAgent || '';
+        return /iPad|iPhone|iPod/.test(ua)
+          || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
+      }
+      return {
+        isStandalone: function () { return standalone(); },
+        canInstall: function () { return deferred !== null; },
+        isIos: function () { return ios(); },
+        // 'accepted' | 'dismissed' | 'unavailable'
+        promptInstall: function () {
+          if (!deferred) return Promise.resolve('unavailable');
+          var d = deferred;
+          deferred = null; // 이벤트는 1회용
+          d.prompt();
+          return d.userChoice.then(function (c) { return c.outcome; });
+        }
+      };
+    })();
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

@@ -5,6 +5,7 @@ import '../config.dart';
 import '../date_util.dart';
 import '../fonts.dart';
 import '../onboarding/onboarding_screen.dart';
+import '../pwa/install_prompt.dart';
 import '../store.dart';
 import '../widgets/common.dart';
 import '../widgets/share_card.dart';
@@ -24,6 +25,15 @@ class _HomeScreenState extends State<HomeScreen> {
   int _tab = 0; // 0 today, 1 reading, 2 todo, 3 stats
 
   static const _tabNames = ['오늘', '독서', '시험 TODO', '월간 기록'];
+
+  @override
+  void initState() {
+    super.initState();
+    // 웹 브라우저 접속 시 PWA 설치 유도 팝업(설치 가능할 때만).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) maybeShowInstallPrompt(context);
+    });
+  }
 
   void _switchTab(int i) {
     final store = context.read<Store>();
