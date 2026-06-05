@@ -312,6 +312,7 @@ class WorkoutPlan {
   final List<SplitDay> splitDays; // 헬스 분할 시퀀스 (순서대로 순환)
   final List<String> bodyKeys; // 맨몸 종목 키
   final List<String> customExercises; // 기타 운동 이름 (사용자 추가)
+  final bool cardio; // 유산소도 기록할지 여부 (오늘 탭 유산소 카드 노출)
   final String startDate; // 분할 순환 기준일 'YYYY-MM-DD'
 
   WorkoutPlan({
@@ -327,6 +328,7 @@ class WorkoutPlan {
     List<SplitDay>? splitDays,
     required this.bodyKeys,
     required this.customExercises,
+    this.cardio = false,
     String? startDate,
   })  : gymWeekdays = gymWeekdays ?? const [],
         bodyWeekdays = bodyWeekdays ?? const [],
@@ -453,6 +455,7 @@ class WorkoutPlan {
         'splitDays': splitDays.map((e) => e.toJson()).toList(),
         'bodyKeys': bodyKeys,
         'customExercises': customExercises,
+        'cardio': cardio,
         'startDate': startDate,
       };
 
@@ -526,6 +529,7 @@ class WorkoutPlan {
       splitDays: splitDays,
       bodyKeys: strs('bodyKeys'),
       customExercises: strs('customExercises'),
+      cardio: j['cardio'] as bool? ?? false,
       startDate: j['startDate'] as String?,
     );
   }

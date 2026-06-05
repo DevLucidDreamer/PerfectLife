@@ -43,8 +43,10 @@ class TodayTab extends StatelessWidget {
             done: day.checks[t.id] == true,
             onToggle: () => store.toggleCheck(t.id),
           ),
-        const SizedBox(height: 4),
-        _CardioCard(key: ValueKey('cardio-$k'), dateKey: k),
+        if (store.showCardio) ...[
+          const SizedBox(height: 4),
+          _CardioCard(key: ValueKey('cardio-$k'), dateKey: k),
+        ],
         if (store.hasWorkoutData(k)) ...[
           const SizedBox(height: 10),
           _WorkoutShareBar(store: store),

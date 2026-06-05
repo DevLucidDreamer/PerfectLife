@@ -92,6 +92,15 @@ class Store extends ChangeNotifier {
   }
 
   // ===================== 유산소 =====================
+  /// 유산소 기록 카드 노출 여부.
+  /// 온보딩 사용자는 운동을 고르고 유산소를 켰을 때만, 레거시(프로필 없음)
+  /// 사용자는 기존 기본 루틴에 유산소가 포함되므로 항상 노출한다.
+  bool get showCardio {
+    final p = data.profile;
+    if (p == null || !p.onboarded) return true;
+    return p.workout?.cardio == true;
+  }
+
   List<CardioLog> cardioOf(String k) =>
       data.cardioLogs.where((l) => l.date == k).toList();
 
@@ -246,11 +255,19 @@ class Store extends ChangeNotifier {
     var d = DateTime.now();
     d = DateTime(d.year, d.month, d.day);
     for (int i = 0; i < 400; i++) {
-      if (isDayComplete(d)) {
-        s++;
-      } else if (i != 0) {
-        break;
+      // 그 날의 필수 할 일(취미 등 optional 제외).
+      final tasks = buildTasksForDate(d).where((t) => !t.optional).toList();
+      if (tasks.isNotEmpty) {
+        final rec = data.days[DateUtil.dkey(d)];
+        final done = rec != null && tasks.every((t) => rec.checks[t.id] == true);
+        if (done) {
+          s++;
+        } else if (i != 0) {
+          break; // 과거의 미완료일에서 연속이 끊긴다(오늘은 진행 중이라 예외).
+        }
       }
+      // 할 일이 없는 날(휴식/미설정)은 연속을 끊지도, 늘리지도 않고 넘어간다.
+      // 그래서 아무 루틴도 없으면 매일 0이 누적돼 연속은 0으로 유지된다.
       d = d.subtract(const Duration(days: 1));
     }
     return s;

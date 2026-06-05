@@ -28,6 +28,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // 운동
   final Set<String> _wTypes = {}; // gym/body
   final List<String> _customEx = [];
+  bool _cardio = false; // 유산소도 기록할지 여부 (선택)
   int _daysPerWeek = 3;
   final List<String> _bodyKeys = [...RoutineTemplates.bodyRecommended];
   // 헬스+맨몸 병행 배치
@@ -103,6 +104,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (wp.hasGym) _wTypes.add('gym');
       if (wp.hasBody) _wTypes.add('body');
       _daysPerWeek = wp.daysPerWeek;
+      _cardio = wp.cardio;
       _sameDay = wp.sameDay;
       if (wp.gymCount > 0) _gymCount = wp.gymCount;
       if (wp.bodyKeys.isNotEmpty) {
@@ -261,6 +263,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             : const [],
         bodyKeys: _wTypes.contains('body') ? List.from(_bodyKeys) : const [],
         customExercises: List.from(_customEx),
+        cardio: _cardio,
       );
     }
     ReadingPlan? rp;
@@ -442,6 +445,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         ctl: _customAdd,
         color: AppColors.accent,
         hint: '기타 운동 이름',
+      ),
+      const SizedBox(height: 16),
+      _label('유산소도 기록할까요?'),
+      _toggleChip(
+        _cardio ? '유산소 기록함 (선택)' : '유산소는 안 할래요',
+        _cardio,
+        AppColors.accent,
+        () => setState(() => _cardio = !_cardio),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text('켜두면 오늘 탭에 유산소 기록 칸이 나타나요. 매일 강제하진 않아요.',
+            style: AppFonts.serif(size: 12.5, color: AppColors.inkFaint)),
       ),
       const SizedBox(height: 16),
       _label('주 몇 회 진행할까요?'),
@@ -936,6 +952,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (p.workout != null) ...[
         _label('주간 운동'),
         _weeklyPreview(p),
+        if (p.workout!.cardio) ...[
+          const SizedBox(height: 8),
+          _summaryLine('유산소', '오늘 탭에서 자유롭게 기록 (선택)'),
+        ],
         const SizedBox(height: 14),
       ],
       if (p.reading != null) ...[
