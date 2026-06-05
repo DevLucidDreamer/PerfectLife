@@ -12,11 +12,17 @@ const _snoozeKey = 'pwaPromptSnoozeUntil'; // 이 시각(ms) 전까지는 다시
 /// 네이티브 앱·이미 설치된 PWA·스누즈 기간 중에는 아무 것도 하지 않는다.
 Future<void> maybeShowInstallPrompt(BuildContext context) async {
   if (!kIsWeb) return;
-  if (pwaIsStandalone()) return;
+  if (pwaIsStandalone()) return; // 이미 앱으로 설치된 경우는 띄우지 않음
+
+  // 설치 안내 페이지(/get/)의 설치 버튼에서 ?install=1 로 진입하면
+  // 스누즈 기록과 상관없이 항상 설치 팝업을 띄운다(재방문자도 반드시 노출).
+  final forced = Uri.base.queryParameters['install'] == '1';
 
   final prefs = await SharedPreferences.getInstance();
-  final snoozeUntil = prefs.getInt(_snoozeKey) ?? 0;
-  if (DateTime.now().millisecondsSinceEpoch < snoozeUntil) return;
+  if (!forced) {
+    final snoozeUntil = prefs.getInt(_snoozeKey) ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch < snoozeUntil) return;
+  }
 
   final ios = pwaIsIos();
   var canInstall = pwaCanInstall();
