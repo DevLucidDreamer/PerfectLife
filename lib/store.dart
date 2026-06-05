@@ -38,6 +38,16 @@ class Store extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 모든 기록·프로필·이름을 삭제하고 첫 실행(온보딩) 상태로 되돌린다.
+  /// 되돌릴 수 없으므로 호출 전 반드시 사용자 확인을 받는다.
+  Future<void> resetAll() async {
+    data = AppData();
+    viewOffset = 0;
+    statMonth = DateTime.now();
+    await _prefs.remove(_key);
+    notifyListeners();
+  }
+
   /// 특정 날짜의 체크 객체 (없으면 생성)
   DayRecord day(String k) => data.days.putIfAbsent(k, () => DayRecord());
 

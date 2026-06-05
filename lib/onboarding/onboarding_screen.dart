@@ -1072,6 +1072,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // ===================== 하단 =====================
   Widget _bottomBar() {
     final isSummary = _current == 'summary';
+    // 첫 실행(되돌릴 화면이 없는 초기 설정)에서는 step 0에 '닫기'를 숨긴다.
+    // 메인에서 다시 연 경우(canPop)에는 '닫기'로 빠져나갈 수 있게 둔다.
+    final showBack = _step > 0 || Navigator.canPop(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
       decoration: const BoxDecoration(
@@ -1079,21 +1082,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: _back,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              decoration: BoxDecoration(
-                color: AppColors.panel,
-                border: Border.all(color: AppColors.line),
-                borderRadius: BorderRadius.circular(12),
+          if (showBack) ...[
+            GestureDetector(
+              onTap: _back,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.panel,
+                  border: Border.all(color: AppColors.line),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(_step == 0 ? '닫기' : '이전',
+                    style: AppFonts.sans(
+                        size: 13,
+                        color: AppColors.inkDim,
+                        weight: FontWeight.w600)),
               ),
-              child: Text(_step == 0 ? '닫기' : '이전',
-                  style: AppFonts.sans(
-                      size: 13, color: AppColors.inkDim, weight: FontWeight.w600)),
             ),
-          ),
-          const SizedBox(width: 10),
+            const SizedBox(width: 10),
+          ],
           Expanded(
             child: GestureDetector(
               onTap: _canNext ? _next : null,

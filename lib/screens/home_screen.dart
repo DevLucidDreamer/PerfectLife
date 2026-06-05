@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../config.dart';
@@ -121,14 +122,12 @@ class _Header extends StatelessWidget {
                       letterSpacing: 3)),
               const Spacer(),
               GestureDetector(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const OnboardingScreen()),
-                ),
+                onTap: () => showOptionsSheet(context),
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: Icon(Icons.tune,
-                      size: 18, color: AppColors.inkFaint),
+                  child: Icon(Icons.more_horiz,
+                      size: 20, color: AppColors.inkFaint),
                 ),
               ),
             ],
@@ -360,6 +359,187 @@ class _FooterBtn extends StatelessWidget {
         child: Text(
           label,
           style: AppFonts.sans(size: 12.5, color: color, weight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+}
+
+/// 설정(옵션) 시트 — 이름 변경 · 루틴 편집 · 전체 초기화.
+void showOptionsSheet(BuildContext context) {
+  final store = context.read<Store>();
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (sheetCtx) => SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+        decoration: BoxDecoration(
+          color: AppColors.panel,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Row(
+                children: [
+                  Text('옵션',
+                      style: AppFonts.sans(
+                          size: 13,
+                          color: AppColors.inkFaint,
+                          weight: FontWeight.w700,
+                          letterSpacing: 1)),
+                ],
+              ),
+            ),
+            _OptionRow(
+              icon: Icons.badge_outlined,
+              label: '이름 변경',
+              sub: store.userName.isEmpty ? '미설정' : store.userName,
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _showNameDialog(context);
+              },
+            ),
+            _OptionRow(
+              icon: Icons.tune,
+              label: '루틴 편집',
+              sub: '운동 · 독서 · 공부 · 취미 다시 설정',
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+                );
+              },
+            ),
+            _OptionRow(
+              icon: Icons.delete_outline,
+              label: '전체 초기화',
+              sub: '모든 기록과 루틴을 삭제합니다',
+              danger: true,
+              onTap: () {
+                Navigator.pop(sheetCtx);
+                _confirmResetAll(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// 이름 변경 다이얼로그.
+void _showNameDialog(BuildContext context) {
+  final store = context.read<Store>();
+  final ctl = TextEditingController(text: store.userName);
+  showDialog<void>(
+    context: context,
+    builder: (dctx) => AlertDialog(
+      backgroundColor: AppColors.panel,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Text('이름 변경',
+          style: AppFonts.sans(
+              size: 16, color: AppColors.ink, weight: FontWeight.w700)),
+      content: TextField(
+        controller: ctl,
+        autofocus: true,
+        style: AppFonts.sans(size: 14, color: AppColors.ink),
+        textInputAction: TextInputAction.done,
+        inputFormatters: [LengthLimitingTextInputFormatter(20)],
+        decoration: inputDecoration('예: 이재원'),
+        onSubmitted: (_) {
+          store.setUserName(ctl.text);
+          Navigator.pop(dctx);
+        },
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dctx),
+          child: Text('취소', style: AppFonts.sans(color: AppColors.inkDim)),
+        ),
+        TextButton(
+          onPressed: () {
+            store.setUserName(ctl.text);
+            Navigator.pop(dctx);
+            showToast(context, '이름을 저장했습니다');
+          },
+          child: Text('저장',
+              style: AppFonts.sans(
+                  color: AppColors.accentSoft, weight: FontWeight.w700)),
+        ),
+      ],
+    ),
+  );
+}
+
+/// 전체 초기화 — 2단계 확인 후 모든 데이터를 삭제하고 온보딩으로 돌아간다.
+Future<void> _confirmResetAll(BuildContext context) async {
+  final store = context.read<Store>();
+  final ok = await confirmDialog(
+    context,
+    '모든 기록(운동·독서·공부·체크)과 루틴 설정이 영구히 삭제되고 처음 화면으로 돌아갑니다. 계속하시겠습니까?',
+  );
+  if (!ok) return;
+  await store.resetAll();
+  // 프로필이 비워지면 _RootGate가 온보딩을 다시 띄운다. 위에 쌓인 라우트만 정리.
+  if (context.mounted) {
+    Navigator.of(context).popUntil((r) => r.isFirst);
+    showToast(context, '모든 기록을 초기화했습니다');
+  }
+}
+
+class _OptionRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String sub;
+  final bool danger;
+  final VoidCallback onTap;
+  const _OptionRow({
+    required this.icon,
+    required this.label,
+    required this.sub,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger ? const Color(0xFFD96A5A) : AppColors.ink;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 21, color: danger ? color : AppColors.accentSoft),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: AppFonts.sans(
+                          size: 14.5,
+                          color: color,
+                          weight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text(sub,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          AppFonts.sans(size: 11.5, color: AppColors.inkFaint)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 20, color: AppColors.inkFaint),
+          ],
         ),
       ),
     );
