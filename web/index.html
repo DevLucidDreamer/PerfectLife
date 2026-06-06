@@ -106,10 +106,37 @@
     // Flutter 첫 프레임 렌더 시 로딩 오버레이 제거
     window.addEventListener('flutter-first-frame', function () {
       var el = document.getElementById('loading');
-      if (!el) return;
-      el.style.opacity = '0';
-      setTimeout(function () { el.remove(); }, 300);
+      if (el) {
+        el.style.opacity = '0';
+        setTimeout(function () { el.remove(); }, 300);
+      }
+      fixIosStandaloneTouchOffset();
     });
+
+    // iOS PWA(홈화면 설치) 첫 실행 시 터치 좌표가 상태바 높이만큼 아래로
+    // 밀리는 버그 우회. standalone 진입 직후 Safari가 safe-area inset /
+    // 뷰포트 크기를 늦게 보고하기 때문에 Flutter의 포인터 히트테스트가
+    // 잘못된 오프셋으로 초기화된다. resize 이벤트를 강제로 발생시켜
+    // 뷰포트 메트릭을 다시 계산하게 만들면 좌표가 즉시 보정된다.
+    function fixIosStandaloneTouchOffset() {
+      var isIos = /iPad|iPhone|iPod/.test(navigator.userAgent || '')
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      var isStandalone = window.navigator.standalone === true
+        || window.matchMedia('(display-mode: standalone)').matches
+        || window.matchMedia('(display-mode: fullscreen)').matches
+        || window.matchMedia('(display-mode: minimal-ui)').matches;
+      if (!isIos || !isStandalone) return;
+      // safe-area inset이 늦게 확정되는 타이밍을 여러 번 커버.
+      [0, 120, 350, 800].forEach(function (delay) {
+        setTimeout(function () {
+          window.scrollTo(0, 0);
+          window.dispatchEvent(new Event('resize'));
+        }, delay);
+      });
+    }
+
+    // 앱 전환 후 복귀(bfcache 복원 포함) 시에도 한 번 더 보정.
+    window.addEventListener('pageshow', fixIosStandaloneTouchOffset);
   </script>
 </body>
 </html>
