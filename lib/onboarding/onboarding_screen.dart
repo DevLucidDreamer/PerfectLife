@@ -29,7 +29,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final Set<String> _wTypes = {}; // gym/body
   final List<String> _customEx = [];
   bool _cardio = false; // 유산소도 기록할지 여부 (선택)
-  int _daysPerWeek = 3;
+  // 운동할 요일 (0=일 ~ 6=토). 빈도 프리셋으로 빠르게 채우거나 요일을 직접 토글한다.
+  final Set<int> _weekdays = {...RoutineTemplates.weekdaysFor(3)};
   final List<String> _bodyKeys = [...RoutineTemplates.bodyRecommended];
   // 헬스+맨몸 병행 배치
   bool _sameDay = false; // 같은 날 함께 vs 격일(번갈아)
@@ -43,6 +44,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   bool get _hasGym => _wTypes.contains('gym');
   // 맨몸 또는 기타 운동(둘 다 맨몸 로거로 기록).
   bool get _hasBodyish => _wTypes.contains('body') || _customEx.isNotEmpty;
+
+  /// 주간 운동일 수 = 선택한 요일 개수.
+  int get _daysPerWeek => _weekdays.length;
 
   /// 실제 적용될 주간 헬스 횟수.
   int get _effectiveGymCount {
@@ -62,6 +66,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   bool _readByPages = true;
   int _pagesPerDay = 20;
   int _minutesPerDay = 30;
+  int _readDaysPerWeek = 7; // 1~7 (7 = 매일)
   // 공부 / 취미
   final List<StudyItem> _study = [];
   final List<String> _hobby = [];
@@ -103,7 +108,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _categories.add('workout');
       if (wp.hasGym) _wTypes.add('gym');
       if (wp.hasBody) _wTypes.add('body');
-      _daysPerWeek = wp.daysPerWeek;
+      _weekdays
+        ..clear()
+        ..addAll(wp.weekdays.isNotEmpty
+            ? wp.weekdays
+            : RoutineTemplates.weekdaysFor(wp.daysPerWeek));
       _cardio = wp.cardio;
       _sameDay = wp.sameDay;
       if (wp.gymCount > 0) _gymCount = wp.gymCount;
@@ -133,6 +142,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         _readByPages = false;
         _minutesPerDay = rp.minutesPerDay;
       }
+      _readDaysPerWeek = rp.daysPerWeek;
     }
     if (p.study.isNotEmpty) {
       _categories.add('study');
@@ -239,7 +249,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (_hasGym) types.add('gym');
       if (_wTypes.contains('body')) types.add('body');
       if (_customEx.isNotEmpty) types.add('custom');
-      final weekdays = RoutineTemplates.weekdaysFor(_daysPerWeek)..sort();
+      final weekdays = _weekdays.toList()..sort();
       final assign = SplitTemplates.assignGymBody(
         weekdays: weekdays,
         gymCount: _effectiveGymCount,
@@ -271,6 +281,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       rp = ReadingPlan(
         pagesPerDay: _readByPages ? _pagesPerDay : 0,
         minutesPerDay: _readByPages ? 0 : _minutesPerDay,
+        daysPerWeek: _readDaysPerWeek,
       );
     }
     return RoutineProfile(
@@ -413,8 +424,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   // ---- 운동 ----
   List<Widget> _workoutStep() {
-    final weekdays = RoutineTemplates.weekdaysFor(_daysPerWeek)..sort();
-    final dayLabels = weekdays.map((d) => Config.dayNames[d]).join(' · ');
+    final weekdays = _weekdays.toList()..sort();
     return [
       _stepTitle('💪', '운동 설정'),
       _label('어떤 운동을 하시겠어요? (복수 선택)'),
@@ -460,22 +470,32 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             style: AppFonts.serif(size: 12.5, color: AppColors.inkFaint)),
       ),
       const SizedBox(height: 16),
-      _label('주 몇 회 진행할까요?'),
+      _label('주 몇 회 진행할까요? (빠른 설정)'),
       Wrap(
         spacing: 8,
         runSpacing: 8,
         children: [
           for (int n = 1; n <= 7; n++)
             _freqChip(n, _daysPerWeek == n, () => setState(() {
-                  _daysPerWeek = n;
+                  _weekdays
+                    ..clear()
+                    ..addAll(RoutineTemplates.weekdaysFor(n));
                   _recommendSplit();
                 })),
         ],
       ),
+      const SizedBox(height: 16),
+      _label('운동할 요일을 직접 고르세요'),
+      Row(children: [
+        for (int d = 0; d < 7; d++) ...[
+          if (d > 0) const SizedBox(width: 6),
+          Expanded(child: _dayToggleChip(d)),
+        ],
+      ]),
       Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: Text('운동 요일: $dayLabels',
-            style: AppFonts.sans(size: 12, color: AppColors.inkFaint)),
+        child: Text('월·수·금 대신 화·목·토처럼 원하는 요일로 바꿀 수 있어요.',
+            style: AppFonts.serif(size: 12.5, color: AppColors.inkFaint)),
       ),
       if (_hasGym && _hasBodyish) ..._combineSection(weekdays),
       if (_hasGym) ..._gymSplitSection(),
@@ -708,8 +728,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // ---- 독서 ----
   List<Widget> _readingStep() {
     final pages = _effectivePages;
-    final perMonth = pages * 30 / RoutineTemplates.avgBookPages;
-    final perYear = pages * 365 / RoutineTemplates.avgBookPages;
+    final perYear =
+        pages * _readDaysPerWeek * 52 / RoutineTemplates.avgBookPages;
+    final perMonth = perYear / 12;
     return [
       _stepTitle('📖', '독서 목표'),
       _label('목표 기준을 선택하세요'),
@@ -745,6 +766,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           max: 480,
           onChanged: (v) => setState(() => _minutesPerDay = v),
         ),
+      const SizedBox(height: 18),
+      _label('주 몇 회 읽을까요?'),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (int n = 1; n <= 7; n++)
+            _readFreqChip(n, _readDaysPerWeek == n,
+                () => setState(() => _readDaysPerWeek = n)),
+        ],
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Text('매일이 부담되면 주 3회처럼 정해도 돼요. 읽기로 한 날에만 오늘 탭에 떠요.',
+            style: AppFonts.serif(size: 12.5, color: AppColors.inkFaint)),
+      ),
       const SizedBox(height: 18),
       Container(
         padding: const EdgeInsets.all(16),
@@ -960,7 +997,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       ],
       if (p.reading != null) ...[
         _label('독서'),
-        _summaryLine(p.reading!.taskName,
+        _summaryLine(
+            p.reading!.daysPerWeek >= 7
+                ? p.reading!.taskName
+                : '${p.reading!.taskName} · ${p.reading!.freqLabel}',
             '한 달 ${p.reading!.booksPerMonth.toStringAsFixed(1)}권 · 1년 ${p.reading!.booksPerYear.toStringAsFixed(0)}권'),
         const SizedBox(height: 14),
       ],
@@ -1216,6 +1256,36 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
+  /// 운동 요일 토글 칩 (일~토). 최소 1개는 남겨둔다.
+  Widget _dayToggleChip(int d) {
+    final selected = _weekdays.contains(d);
+    return GestureDetector(
+      onTap: () => setState(() {
+        if (selected) {
+          if (_weekdays.length > 1) _weekdays.remove(d);
+        } else {
+          _weekdays.add(d);
+        }
+        _recommendSplit();
+      }),
+      child: Container(
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accent : AppColors.panel,
+          border:
+              Border.all(color: selected ? AppColors.accent : AppColors.line),
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Text(Config.dayNames[d],
+            style: AppFonts.sans(
+                size: 14,
+                color: selected ? AppColors.bg : AppColors.inkDim,
+                weight: FontWeight.w700)),
+      ),
+    );
+  }
+
   Widget _freqChip(int n, bool selected, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -1231,6 +1301,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         child: Text('$n',
             style: AppFonts.display(
                 size: 17, color: selected ? AppColors.bg : AppColors.inkDim)),
+      ),
+    );
+  }
+
+  /// 독서 빈도 칩 ("주 N" / "매일").
+  Widget _readFreqChip(int n, bool selected, VoidCallback onTap) {
+    final label = n >= 7 ? '매일' : '주 $n';
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accent : AppColors.panel,
+          border:
+              Border.all(color: selected ? AppColors.accent : AppColors.line),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(label,
+            style: AppFonts.sans(
+                size: 12.5,
+                color: selected ? AppColors.bg : AppColors.inkDim,
+                weight: FontWeight.w600)),
       ),
     );
   }

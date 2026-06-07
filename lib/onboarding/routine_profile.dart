@@ -536,11 +536,19 @@ class WorkoutPlan {
 }
 
 /// 독서 계획.
+///
+/// daysPerWeek 7이면 매일, 그 외에는 RoutineTemplates.weekdaysFor로 요일을 분배한다.
+/// 그래서 "매일이 부담스러우면 주 3회"처럼 빈도를 조절할 수 있다.
 class ReadingPlan {
   final int pagesPerDay; // 0이면 시간 기준 사용
   final int minutesPerDay; // 0이면 페이지 기준 사용
+  final int daysPerWeek; // 1~7 (7 = 매일)
 
-  ReadingPlan({this.pagesPerDay = 0, this.minutesPerDay = 0});
+  ReadingPlan({
+    this.pagesPerDay = 0,
+    this.minutesPerDay = 0,
+    this.daysPerWeek = 7,
+  });
 
   /// 일 환산 페이지 (페이지 우선, 없으면 시간→페이지 환산).
   int get effectivePagesPerDay {
@@ -551,10 +559,23 @@ class ReadingPlan {
     return 0;
   }
 
-  double get booksPerMonth =>
-      effectivePagesPerDay * 30 / RoutineTemplates.avgBookPages;
+  /// 이 독서가 배정되는 요일들 (0=일 ~ 6=토).
+  List<int> get weekdays => RoutineTemplates.weekdaysFor(daysPerWeek);
+
+  /// 해당 날짜에 독서가 배정되는지.
+  bool scheduledOn(DateTime d) =>
+      daysPerWeek >= 7 || weekdays.contains(d.weekday % 7);
+
+  /// 빈도 라벨 ("매일" 또는 "주 N회").
+  String get freqLabel => daysPerWeek >= 7 ? '매일' : '주 $daysPerWeek회';
+
+  /// 주간 빈도를 반영한 연/월 권수 (회당 페이지 × 주 N회 × 주 수).
   double get booksPerYear =>
-      effectivePagesPerDay * 365 / RoutineTemplates.avgBookPages;
+      effectivePagesPerDay *
+      daysPerWeek.clamp(1, 7) *
+      52 /
+      RoutineTemplates.avgBookPages;
+  double get booksPerMonth => booksPerYear / 12;
 
   /// 오늘 탭 독서 항목 제목.
   String get taskName {
@@ -563,12 +584,16 @@ class ReadingPlan {
     return '독서';
   }
 
-  Map<String, dynamic> toJson() =>
-      {'pagesPerDay': pagesPerDay, 'minutesPerDay': minutesPerDay};
+  Map<String, dynamic> toJson() => {
+        'pagesPerDay': pagesPerDay,
+        'minutesPerDay': minutesPerDay,
+        'daysPerWeek': daysPerWeek,
+      };
 
   factory ReadingPlan.fromJson(Map<String, dynamic> j) => ReadingPlan(
         pagesPerDay: (j['pagesPerDay'] as num?)?.toInt() ?? 0,
         minutesPerDay: (j['minutesPerDay'] as num?)?.toInt() ?? 0,
+        daysPerWeek: (j['daysPerWeek'] as num?)?.toInt() ?? 7,
       );
 }
 

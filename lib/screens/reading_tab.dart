@@ -140,7 +140,11 @@ class _GoalBanner extends StatelessWidget {
                       color: AppColors.inkFaint,
                       weight: FontWeight.w600)),
               const Spacer(),
-              Pill(plan.taskName.replaceFirst('독서 · ', ''), AppColors.accent),
+              Pill(
+                  plan.daysPerWeek >= 7
+                      ? plan.taskName.replaceFirst('독서 · ', '')
+                      : '${plan.freqLabel} · ${plan.taskName.replaceFirst('독서 · ', '')}',
+                  AppColors.accent),
             ],
           ),
           const SizedBox(height: 12),

@@ -187,12 +187,15 @@ class Store extends ChangeNotifier {
         ));
       }
     }
-    if (p.reading != null) {
+    // 독서: 주간 빈도에 따라 배정된 요일에만 표시한다.
+    // (배정되지 않은 날은 항목이 없으므로 연속을 끊지 않는다.)
+    final rp = p.reading;
+    if (rp != null && rp.scheduledOn(d)) {
       list.add(TaskItem(
         id: 'read',
         pill: '독서',
         type: 'daily',
-        name: p.reading!.taskName,
+        name: rp.daysPerWeek >= 7 ? rp.taskName : '${rp.taskName} · ${rp.freqLabel}',
         desc: '독서 탭에서 진도를 기록하십시오',
       ));
     }
